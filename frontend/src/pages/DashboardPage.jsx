@@ -184,6 +184,26 @@ export default function DashboardPage() {
   const toSelectItems = (items) =>
     (items || []).map((item) => ({ key: String(item.id), label: item.name }))
 
+  // Derive tracked status names from selected IDs + available statuses
+  const trackedStatusNamesMemo = useMemo(() => {
+    const idToName = {}
+    availableStatuses.forEach(s => { idToName[String(s.id)] = s.name })
+    return Array.from(selectedTrackedStatuses).map(id => idToName[id]).filter(Boolean)
+  }, [selectedTrackedStatuses, availableStatuses])
+
+  // Flatten status_times into top-level _st_ keys for table sorting
+  const issuesForTable = useMemo(() => {
+    return issues.map(issue => {
+      const flat = { ...issue }
+      if (issue.status_times) {
+        for (const [status, days] of Object.entries(issue.status_times)) {
+          flat[`_st_${status}`] = days
+        }
+      }
+      return flat
+    })
+  }, [issues])
+
   // Compute status time chart data: if issues are selected, show only their aggregate
   // HeroUI Table returns "all" string when «select all» is clicked — normalize to a Set
   const normalizedSelection = useMemo(() => {
@@ -258,6 +278,68 @@ export default function DashboardPage() {
   }, [metrics, issues, normalizedSelection])
 
   const displayMetrics = filteredMetrics || metrics
+
+  // Shared selected-issues helper for per-status computations
+  const selectedForStatus = useMemo(() => {
+    if (normalizedSelection.size === 0) return issues
+    return issues.filter(i => normalizedSelection.has(String(i.id)))
+  }, [issues, normalizedSelection])
+
+  // Per-status metrics: avg, median, total days for each tracked status
+  const perStatusMetrics = useMemo(() => {
+    const result = {}
+    for (const statusName of trackedStatusNamesMemo) {
+      const times = selectedForStatus
+        .map(i => i.status_times?.[statusName])
+        .filter(d => d !== undefined && d !== null && d > 0)
+
+      if (times.length === 0) {
+        result[statusName] = { avg: 0, median: 0, total: 0, count: 0 }
+        continue
+      }
+
+      const sum = times.reduce((a, b) => a + b, 0)
+      const avg = sum / times.length
+      const sorted = [...times].sort((a, b) => a - b)
+      const mid = Math.floor(sorted.length / 2)
+      const median = sorted.length % 2 === 0
+        ? (sorted[mid - 1] + sorted[mid]) / 2
+        : sorted[mid]
+
+      result[statusName] = {
+        avg: Math.round(avg * 100) / 100,
+        median: Math.round(median * 100) / 100,
+        total: Math.round(sum * 100) / 100,
+        count: times.length
+      }
+    }
+    return result
+  }, [selectedForStatus, trackedStatusNamesMemo])
+
+  // Per-status distribution: {day: count} for each tracked status
+  const perStatusDistribution = useMemo(() => {
+    const result = {}
+    for (const statusName of trackedStatusNamesMemo) {
+      const dist = {}
+      for (const issue of selectedForStatus) {
+        const days = issue.status_times?.[statusName]
+        if (days !== undefined && days !== null && days > 0) {
+          const day = Math.max(1, Math.ceil(days))
+          const key = String(day)
+          dist[key] = (dist[key] || 0) + 1
+        }
+      }
+      result[statusName] = dist
+    }
+    return result
+  }, [selectedForStatus, trackedStatusNamesMemo])
+
+  // Helper to format days for per-status metric cards
+  const formatStatusMetricDays = (days) => {
+    if (!days || days === 0) return '0ч'
+    if (days < 1) return `${Math.round(days * 24)}ч`
+    return `${Math.round(days)}д`
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -498,9 +580,10 @@ export default function DashboardPage() {
 
         {issues.length > 0 && !loading && (
           <IssuesTable
-            issues={issues}
+            issues={issuesForTable}
             selectedKeys={selectedIssueIds}
             onSelectionChange={setSelectedIssueIds}
+            trackedStatusNames={trackedStatusNamesMemo}
           />
         )}
 
@@ -538,6 +621,73 @@ export default function DashboardPage() {
                 <StatusTimeChart data={statusTimeChartData} />
               </CardBody>
             </Card>
+          </div>
+        )}
+
+        {/* Per-status analytics blocks */}
+        {metrics && !loading && trackedStatusNamesMemo.length > 0 && (
+          <div className="mt-6 space-y-6">
+            {trackedStatusNamesMemo.map((statusName) => {
+              const m = perStatusMetrics[statusName]
+              const dist = perStatusDistribution[statusName]
+              const hasData = m && m.count > 0
+
+              return (
+                <Card key={statusName} shadow="sm" radius="lg">
+                  <CardHeader className="pb-0 pt-4 px-5">
+                    <h3 className="text-lg font-semibold">
+                      Статус «{statusName}»
+                      {normalizedSelection.size > 0
+                        ? ` — по ${normalizedSelection.size} выбранным задачам`
+                        : ' — по всем задачам'}
+                    </h3>
+                  </CardHeader>
+                  <CardBody className="px-5 pb-5">
+                    {/* Metric cards */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                      <div className="bg-blue-50 rounded-lg p-3 text-center">
+                        <p className="text-xs text-default-500">Среднее время</p>
+                        <p className="text-xl font-bold text-blue-600">
+                          {hasData ? formatStatusMetricDays(m.avg) : '—'}
+                        </p>
+                      </div>
+                      <div className="bg-purple-50 rounded-lg p-3 text-center">
+                        <p className="text-xs text-default-500">Медианное время</p>
+                        <p className="text-xl font-bold text-purple-600">
+                          {hasData ? formatStatusMetricDays(m.median) : '—'}
+                        </p>
+                      </div>
+                      <div className="bg-amber-50 rounded-lg p-3 text-center">
+                        <p className="text-xs text-default-500">Суммарно дней</p>
+                        <p className="text-xl font-bold text-amber-600">
+                          {hasData ? formatStatusMetricDays(m.total) : '—'}
+                        </p>
+                      </div>
+                      <div className="bg-green-50 rounded-lg p-3 text-center">
+                        <p className="text-xs text-default-500">Задач в статусе</p>
+                        <p className="text-xl font-bold text-green-600">
+                          {hasData ? m.count : '0'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Distribution chart */}
+                    {hasData && Object.keys(dist).length > 0 ? (
+                      <>
+                        <p className="text-xs text-gray-500 mb-2">
+                          Распределение количества задач по времени нахождения в статусе «{statusName}»
+                        </p>
+                        <ClosureTimeDistributionChart data={dist} />
+                      </>
+                    ) : (
+                      <div className="flex items-center justify-center h-[200px] text-gray-400 text-sm">
+                        Нет данных для отображения
+                      </div>
+                    )}
+                  </CardBody>
+                </Card>
+              )
+            })}
           </div>
         )}
 

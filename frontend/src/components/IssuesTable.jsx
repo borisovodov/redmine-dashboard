@@ -20,7 +20,13 @@ function formatDate(isoString) {
 
 const ROWS_PER_PAGE = 15
 
-export default function IssuesTable({ issues, selectedKeys, onSelectionChange }) {
+function formatStatusDays(days) {
+  if (days === null || days === undefined) return '—'
+  if (days < 1) return `${Math.round(days * 24)}ч`
+  return `${Math.round(days)}д`
+}
+
+export default function IssuesTable({ issues, selectedKeys, onSelectionChange, trackedStatusNames = [] }) {
   const [page, setPage] = useState(1)
   const [sortDescriptor, setSortDescriptor] = useState({ column: 'close_time_hours', direction: 'descending' })
 
@@ -35,7 +41,7 @@ export default function IssuesTable({ issues, selectedKeys, onSelectionChange })
       let aVal = a[column]
       let bVal = b[column]
 
-      if (column === 'close_time_hours') {
+      if (column === 'close_time_hours' || column.startsWith('_st_')) {
         aVal = aVal ?? -1
         bVal = bVal ?? -1
       }
@@ -96,6 +102,9 @@ export default function IssuesTable({ issues, selectedKeys, onSelectionChange })
             <TableColumn key="assigned_to" allowsSorting>Исполнитель</TableColumn>
             <TableColumn key="closed_on" allowsSorting>Дата закрытия</TableColumn>
             <TableColumn key="close_time_hours" allowsSorting>Время закрытия</TableColumn>
+            {trackedStatusNames.map((name) => (
+              <TableColumn key={`_st_${name}`} allowsSorting>{name}</TableColumn>
+            ))}
           </TableHeader>
           <TableBody emptyContent="Нет задач">
             {paginatedItems.map((issue) => (
@@ -154,6 +163,13 @@ export default function IssuesTable({ issues, selectedKeys, onSelectionChange })
                     {formatCloseTime(issue.close_time_hours)}
                   </Chip>
                 </TableCell>
+                {trackedStatusNames.map((name) => (
+                  <TableCell key={`_st_${name}`}>
+                    <span className="text-xs text-default-500">
+                      {formatStatusDays(issue[`_st_${name}`])}
+                    </span>
+                  </TableCell>
+                ))}
               </TableRow>
             ))}
           </TableBody>

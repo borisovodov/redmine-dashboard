@@ -117,11 +117,11 @@ redmine-analytics/
         │   └── api.js           # Axios instance, VITE_API_URL base, session_id interceptor, 401 → /login redirect
         ├── pages/
         │   ├── LoginPage.jsx        # URL + API key form, POST /auth/validate, stores sessionId + redmineUrl + apiKey in localStorage
-        │   └── DashboardPage.jsx    # Project selector, date range, filters (priorities/assignees/types/categories), group-by-assignee checkbox, metrics, charts, issues table
+│       └── DashboardPage.jsx    # Project selector, date range, filters (priorities/assignees/types/categories/closed+tracked statuses), subject search, metrics, charts, issues table
         └── components/
-            ├── MetricsDisplay.jsx              # Avg/median close time cards, total issues card, assignee breakdown table (when grouped)
-            ├── ClosureTimeDistributionChart.jsx # Bar chart (1-day, 2-3, 4-7, 8-14, 15-30, 30+)
-            ├── StatusTimeChart.jsx              # Pie chart (hours per status)
+            ├── MetricsDisplay.jsx              # Avg/median/total close time + total issues cards (4 cards)
+        ├── ClosureTimeDistributionChart.jsx # Line chart: per-day close time distribution
+        ├── StatusTimeChart.jsx              # Donut chart: total days per status
             └── IssuesTable.jsx                  # HeroUI Table: #, subject (link→Redmine), tracker, status, priority, assignee, close time. Sortable, paginated (15/page)
 ```
 
@@ -133,11 +133,12 @@ redmine-analytics/
 | `POST` | `/auth/validate` | No | Login: `{redmine_url, api_key}` → `{session_id, status}` |
 | `POST` | `/auth/logout` | No | Destroy session via `?session_id=` |
 | `GET` | `/projects` | Session | List Redmine projects → `{projects: [{id, name, key}]}` |
-| `POST` | `/analytics` | Session | Calculate metrics: query params `session_id`, `project_id`, `date_from`, `date_to`, `priorities`, `assignees`, `issue_types`, `categories`. Returns `AnalyticsMetrics` including `issues` list |
+| `POST` | `/analytics` | Session | Calculate metrics: query params `session_id`, `project_id`, `date_from`, `date_to`, `priorities`, `assignees`, `issue_types`, `categories`, `closed_statuses`, `tracked_statuses`, `subject`. Returns `AnalyticsMetrics` including `issues` list |
 | `GET` | `/analytics/filters/priorities` | Session | Available priority values → `{priorities: [{id, name}]}` |
 | `GET` | `/analytics/filters/issue_types` | Session | Available tracker values → `{issue_types: [{id, name}]}` |
 | `GET` | `/analytics/filters/assignees` | Session | Project members: `?project_id=` → `{assignees: [{id, name}]}` |
 | `GET` | `/analytics/filters/categories` | Session | Issue categories: `?project_id=` → `{categories: [{id, name}]}` |
+| `GET` | `/analytics/filters/statuses` | Session | All issue statuses → `{statuses: [{id, name}]}` |
 | `GET` | `/analytics/by_assignee` | Session | Grouped metrics + issues: `?session_id=&project_id=&date_from=&date_to=`. Returns `{by_assignee: {...}, issues: [IssueSummary]}` |
 
 All session-authenticated endpoints require `?session_id=<uuid>` query param. Unauthorized → 401 → frontend redirects to `/login`.
@@ -150,7 +151,7 @@ All session-authenticated endpoints require `?session_id=<uuid>` query param. Un
   "total_issues": 42,
   "average_close_time_hours": 12.5,
   "median_close_time_hours": 8.0,
-  "distribution_data": { "1-day": 5, "2-3-days": 10, ... },
+  "distribution_data": { "1": 5, "2": 10, ... },
   "status_time_data": { "New": 5.2, "In Progress": 12.1, ... },
   "issues": [
     {
@@ -158,10 +159,12 @@ All session-authenticated endpoints require `?session_id=<uuid>` query param. Un
       "subject": "Fix login bug",
       "status": "Closed",
       "close_time_hours": 4.5,
+      "closed_on": "2024-01-10T00:00:00Z",
       "url": "https://redmine.example.com/issues/123",
       "tracker": "Bug",
       "priority": "High",
-      "assigned_to": "John Doe"
+      "assigned_to": "John Doe",
+      "status_times": {"New": 2.0, "In Progress": 2.5}
     }
   ]
 }
@@ -188,11 +191,14 @@ All session-authenticated endpoints require `?session_id=<uuid>` query param. Un
 - History mode: `BrowserRouter` (no hash). Nginx must handle SPA fallback with `try_files $uri /index.html`.
 
 ### Analytics Engine
-- "Closed" statuses: `['Closed', 'Rejected', 'Done']`. These are hardcoded and may differ per Redmine instance.
-- Status time calculation parses `journals` from Redmine issue history — requires `include=journals` in API request. Only works if Redmine returns journal details (some instances restrict this).
-- Distribution buckets: 1-day, 2-3-days, 4-7, 8-14, 15-30, 30+.
+- "Closed" statuses: user-configurable via UI multi-select. Defaults: `['Closed', 'Done', 'Rejected', 'Resolved']`. Only issues currently in these statuses are analyzed.
+- "Tracked" statuses: user-configurable multi-select — only these statuses appear in the status time chart. Defaults: all statuses EXCEPT the default closed ones.
+- Status time calculation parses `journals` from Redmine issue history. **Critical**: Redmine list endpoint (`/issues.json`) does NOT return journals even with `include=journals` on some instances (e.g. RedmineUP). Must fetch each issue individually via `GET /issues/{id}.json?include=journals` using `RedmineClient.enrich_issues_with_journals()` — uses ThreadPoolExecutor (10 workers).
+- Distribution: per-day (not bucketed). `_calculate_distribution` returns `{"1": 5, "2": 3, ...}` — day number → count.
+- Status times are computed in hours internally, then converted to **days** (`/ 24`) before returning to frontend for consistency with other metrics.
+- Invariant for verification: sum of close times ≈ sum of status times (excluding closed-status time). Use this to validate correctness.
+- `build_issues_summary()` now includes per-issue `status_times: {status_name: days}` for frontend-side filtering when rows are selected.
 - Pydantic `Project.key` maps to Redmine's `identifier` field (not `id`).
-- `build_issues_summary()` constructs the Redmine issue URL as `{redmine_url}/issues/{id}` and computes `close_time_hours` from `closed_on - created_on`.
 
 ### Frontend Patterns
 - **HeroUI** is the UI library — imported as `@heroui/react`. Components use `onPress` (not `onClick`), `onSelectionChange` for Select, `onValueChange` for Input.
@@ -203,13 +209,16 @@ All session-authenticated endpoints require `?session_id=<uuid>` query param. Un
 - **Vite alias**: `@` maps to `./src` for clean imports like `@/services/api`.
 
 ### Issues Table
-- HeroUI `Table` with `allowsSorting` on all columns, `isStriped` for readability.
+- HeroUI `Table` with `selectionMode="multiple"`, `allowsSorting` on all columns, `isStriped` for readability.
 - Pagination: 15 rows per page using HeroUI `Pagination` component in `bottomContent`.
+- Columns: #, Тема, Трекер, Статус, Приоритет, Исполнитель, Дата закрытия, Время закрытия.
+- Selecting rows filters all metrics and charts to selected issues (via `normalizedSelection` helper — handles `"all"` string from HeroUI).
 - Issue ID rendered as a HeroUI `Button` with `as="a"` linking to `issue.url` with `target="_blank"`.
 - Subject rendered as a plain `<a>` link to the same URL.
 - Status and close time shown as colored `Chip` components:
   - Status: green for closed statuses, yellow otherwise
   - Close time: green (≤24h), yellow (≤72h), red (>72h), gray (not closed)
+- Close date formatted as `DD.MM.YYYY` via `toLocaleDateString('ru-RU')`.
 
 ## Known Limitations
 - No persistent storage — all sessions lost on restart
@@ -218,6 +227,35 @@ All session-authenticated endpoints require `?session_id=<uuid>` query param. Un
 - Hardcoded closed status names may not match all Redmine instances
 - Date filter uses `closed_on` (Redmine range syntax `><from|to`) — filters by close date, not creation date
 - The `by_assignee` endpoint ignores priority/assignee/type/category filters — it only accepts `project_id`, `date_from`, `date_to`
+
+## Lessons Learned / Gotchas
+
+### HeroUI Table selection: `"all"` is a string, not a Set
+When using HeroUI `Table` with `selectionMode="multiple"`, clicking the «select all» checkbox passes the **string `"all"`** to `onSelectionChange`, not a `Set`. Any code that calls `.has()` or `.size` on the selection value will crash. **Fix**: normalize with a helper that converts `"all"` → `new Set(allIds)`, keeps `Set` as-is, otherwise returns empty Set.
+
+### HeroUI Select overflow with many chips
+Multi-select triggers with `renderValue` showing chips can overflow when many items are selected. **Fix**: add `h-auto py-2` to `classNames={{ trigger: ... }}` to let the trigger grow vertically.
+
+### Redmine API: journals only in individual issue endpoint
+`GET /issues.json?include=journals` does **not** return journals on RedmineUP instances. Must use `GET /issues/{id}.json?include=journals` per issue. Implemented via `RedmineClient.enrich_issues_with_journals()` with `ThreadPoolExecutor(max_workers=10)`.
+
+### Redmine API date filter syntax
+- Range: `closed_on=><date_from|date_to`
+- From: `closed_on=>=date_from`
+- To: `closed_on=<=date_to`
+- Python dict only allows one value per key, so use `elif` chain, not sequential `if`s (avoids overwrite bug).
+
+### Vite: restart after npm install/uninstall
+When dependencies change (`npm install`/`npm uninstall`), Vite dev server returns `504 Outdated Optimize Dep`. Must `pkill -f vite` and restart.
+
+### Backend: always restart after code changes
+Uvicorn `--reload` usually picks up changes, but sometimes doesn't (especially after multiple rapid edits). Always run `lsof -ti:8000 | xargs kill -9` + restart after backend edits to be safe.
+
+### Invariant: close time sum ≈ status time sum
+Sum of `close_time_hours` for all issues should approximately equal the sum of all status times in the chart (excluding closed-status time). This invariant can be used to verify correctness of the status time calculation.
+
+### Frontend metrics for selected rows
+All metrics (average, median, total, distribution) are recomputed on the frontend from per-issue data when rows are selected in the table. No additional API calls needed — each issue already carries `close_time_hours` and `status_times`.
 
 ## Common Troubleshooting
 
