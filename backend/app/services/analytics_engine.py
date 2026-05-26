@@ -82,6 +82,9 @@ class AnalyticsEngine:
             for cs in closed_statuses:
                 status_times.pop(cs, None)
         
+        # Convert hours to days for consistency with other metrics
+        status_times = {k: round(v / 24, 2) for k, v in status_times.items()}
+        
         # Calculate metrics
         avg_hours = sum(close_times_hours) / len(close_times_hours) if close_times_hours else 0
         median_hours = statistics.median(close_times_hours) if close_times_hours else 0
@@ -97,30 +100,13 @@ class AnalyticsEngine:
     
     @staticmethod
     def _calculate_distribution(close_times_hours: List[float]) -> Dict:
-        """Calculate distribution of close times by days"""
-        distribution = {
-            '1-day': 0,
-            '2-3-days': 0,
-            '4-7-days': 0,
-            '8-14-days': 0,
-            '15-30-days': 0,
-            '30+-days': 0,
-        }
+        """Calculate per-day distribution of close times"""
+        distribution = {}
         
         for hours in close_times_hours:
-            days = hours / 24
-            if days <= 1:
-                distribution['1-day'] += 1
-            elif days <= 3:
-                distribution['2-3-days'] += 1
-            elif days <= 7:
-                distribution['4-7-days'] += 1
-            elif days <= 14:
-                distribution['8-14-days'] += 1
-            elif days <= 30:
-                distribution['15-30-days'] += 1
-            else:
-                distribution['30+-days'] += 1
+            day = max(1, int(hours / 24) + (1 if hours % 24 > 0 else 0))
+            key = str(day)
+            distribution[key] = distribution.get(key, 0) + 1
         
         return distribution
     
@@ -431,14 +417,14 @@ class AnalyticsEngine:
                 except Exception:
                     pass
             
-            # Get per-issue status times, keep only tracked statuses
+            # Get per-issue status times, keep only tracked statuses, convert to days
             issue_times = per_issue_times.get(issue['id'], {})
             if keep_set is not None:
-                filtered_times = {k: round(v, 2) for k, v in issue_times.items() if k in keep_set}
+                filtered_times = {k: round(v / 24, 2) for k, v in issue_times.items() if k in keep_set}
             else:
                 # Exclude default closed statuses
                 default_closed = set(AnalyticsEngine.DEFAULT_CLOSED_STATUSES)
-                filtered_times = {k: round(v, 2) for k, v in issue_times.items() if k not in default_closed}
+                filtered_times = {k: round(v / 24, 2) for k, v in issue_times.items() if k not in default_closed}
             
             summaries.append({
                 'id': issue['id'],

@@ -11,7 +11,7 @@ export default function MetricsDisplay({ metrics, groupByAssignee }) {
   return (
     <div>
       {/* Main Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card shadow="sm" radius="lg">
           <CardBody className="text-center py-6">
             <div className="flex justify-center mb-3">
@@ -62,6 +62,26 @@ export default function MetricsDisplay({ metrics, groupByAssignee }) {
             <p className="text-sm font-medium text-default-500">Всего задач</p>
             <p className="text-3xl font-bold text-success mt-1">
               {metrics.total_issues}
+            </p>
+          </CardBody>
+        </Card>
+
+        <Card shadow="sm" radius="lg">
+          <CardBody className="text-center py-6">
+            <div className="flex justify-center mb-3">
+              <div className="p-3 rounded-full bg-warning/10">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-warning">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                </svg>
+              </div>
+            </div>
+            <p className="text-sm font-medium text-default-500">Общее время закрытия</p>
+            <p className="text-3xl font-bold text-warning mt-1">
+              {(() => {
+                const totalH = (metrics.average_close_time_hours || 0) * (metrics.total_issues || 0)
+                return formatTime(totalH)
+              })()}
             </p>
           </CardBody>
         </Card>

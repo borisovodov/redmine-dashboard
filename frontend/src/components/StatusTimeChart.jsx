@@ -20,7 +20,7 @@ function CustomTooltip({ active, payload }) {
       <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm">
         <p className="font-medium text-gray-700">{name}</p>
         <p className="font-semibold" style={{ color: payload[0].payload.fill }}>
-          {Math.round(value * 100) / 100} ч (суммарно)
+          {Math.round(value * 100) / 100} д (суммарно)
         </p>
       </div>
     )

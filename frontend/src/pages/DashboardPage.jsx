@@ -217,6 +217,48 @@ export default function DashboardPage() {
     return filtered
   }, [metrics, issues, normalizedSelection])
 
+  // Compute filtered metrics for selected issues (all stats except status_time_data)
+  const filteredMetrics = useMemo(() => {
+    if (!metrics) return null
+    if (normalizedSelection.size === 0) return metrics
+
+    const selectedIssues = issues.filter(i => normalizedSelection.has(String(i.id)))
+    const closeTimes = selectedIssues
+      .map(i => i.close_time_hours)
+      .filter(h => h !== null && h !== undefined)
+
+    if (closeTimes.length === 0) {
+      return { ...metrics, total_issues: 0, average_close_time_hours: 0, median_close_time_hours: 0, distribution_data: {} }
+    }
+
+    // Average and median
+    const sum = closeTimes.reduce((a, b) => a + b, 0)
+    const avg = sum / closeTimes.length
+    const sorted = [...closeTimes].sort((a, b) => a - b)
+    const mid = Math.floor(sorted.length / 2)
+    const median = sorted.length % 2 === 0
+      ? (sorted[mid - 1] + sorted[mid]) / 2
+      : sorted[mid]
+
+    // Per-day distribution (same logic as backend)
+    const dist = {}
+    for (const h of closeTimes) {
+      const day = Math.max(1, Math.ceil(h / 24))
+      const key = String(day)
+      dist[key] = (dist[key] || 0) + 1
+    }
+
+    return {
+      ...metrics,
+      total_issues: closeTimes.length,
+      average_close_time_hours: Math.round(avg * 100) / 100,
+      median_close_time_hours: Math.round(median * 100) / 100,
+      distribution_data: dist,
+    }
+  }, [metrics, issues, normalizedSelection])
+
+  const displayMetrics = filteredMetrics || metrics
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar maxWidth="full" isBordered classNames={{ wrapper: 'px-4' }}>
@@ -252,7 +294,7 @@ export default function DashboardPage() {
             <h2 className="text-xl font-semibold">Фильтры</h2>
           </CardHeader>
           <CardBody className="gap-5 px-5 pb-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <Select
                 label="Проект"
                 placeholder="Выберите проект"
@@ -301,19 +343,6 @@ export default function DashboardPage() {
                 classNames={{ inputWrapper: 'h-12' }}
               />
 
-              <div className="flex items-end">
-                <Button
-                  color="primary"
-                  variant="solid"
-                  radius="md"
-                  size="lg"
-                  onPress={applyFilters}
-                  isLoading={loading}
-                  className="w-full h-12 font-semibold"
-                >
-                  Применить фильтры
-                </Button>
-              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-1">
@@ -415,7 +444,7 @@ export default function DashboardPage() {
                 items={toSelectItems(availableStatuses)}
                 selectedKeys={selectedClosedStatuses}
                 onSelectionChange={(keys) => { setSelectedClosedStatuses(keys); onFilterChange() }}
-                classNames={{ trigger: 'min-h-12' }}
+                classNames={{ trigger: 'min-h-12 h-auto py-2' }}
                 renderValue={(items) => (
                   <div className="flex flex-wrap gap-1">
                     {items.map((item) => (
@@ -437,7 +466,7 @@ export default function DashboardPage() {
                 items={toSelectItems(availableStatuses)}
                 selectedKeys={selectedTrackedStatuses}
                 onSelectionChange={(keys) => { setSelectedTrackedStatuses(keys); onFilterChange() }}
-                classNames={{ trigger: 'min-h-12' }}
+                classNames={{ trigger: 'min-h-12 h-auto py-2' }}
                 renderValue={(items) => (
                   <div className="flex flex-wrap gap-1">
                     {items.map((item) => (
@@ -449,8 +478,20 @@ export default function DashboardPage() {
                 {(item) => <SelectItem key={item.key}>{item.label}</SelectItem>}
               </Select>
 
-              <div className="flex items-center h-full pt-6">
-              </div>
+            </div>
+
+            <div className="mt-4">
+              <Button
+                color="primary"
+                variant="solid"
+                radius="md"
+                size="lg"
+                onPress={applyFilters}
+                isLoading={loading}
+                className="w-full h-12 font-semibold"
+              >
+                Применить фильтры
+              </Button>
             </div>
           </CardBody>
         </Card>
@@ -464,7 +505,7 @@ export default function DashboardPage() {
         )}
 
         {metrics && !loading && (
-          <MetricsDisplay metrics={metrics} />
+          <MetricsDisplay metrics={displayMetrics} />
         )}
 
         {metrics && !loading && (
@@ -474,7 +515,7 @@ export default function DashboardPage() {
                 <h3 className="text-lg font-semibold">Распределение времени закрытия</h3>
               </CardHeader>
               <CardBody className="px-5 pb-5">
-                <ClosureTimeDistributionChart data={metrics.distribution_data} />
+                <ClosureTimeDistributionChart data={displayMetrics.distribution_data} />
               </CardBody>
             </Card>
 
@@ -485,14 +526,14 @@ export default function DashboardPage() {
                   {normalizedSelection.size > 0
                     ? ` по ${normalizedSelection.size} выбранным задачам`
                     : ' по всем задачам'}
-                  {' '}(часы)
+                  {' '}(дни)
                 </h3>
               </CardHeader>
               <CardBody className="px-5 pb-5">
                 <p className="text-xs text-gray-500 mb-2">
                   {normalizedSelection.size > 0
                     ? `Данные только для ${normalizedSelection.size} выделенных задач`
-                    : 'Исторический срез по закрытым задачам: сколько часов каждая задача провела в статусах до закрытия'}
+                    : 'Исторический срез по закрытым задачам: сколько дней каждая задача провела в статусах до закрытия'}
                 </p>
                 <StatusTimeChart data={statusTimeChartData} />
               </CardBody>
