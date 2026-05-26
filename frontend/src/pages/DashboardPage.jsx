@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Navbar, NavbarBrand, NavbarContent, NavbarItem,
   Button, Card, CardHeader, CardBody, Select, SelectItem,
-  DatePicker, Checkbox, Progress, Alert, Chip
+  DatePicker, Checkbox, Alert, Chip
 } from '@heroui/react'
 import { parseDate, getLocalTimeZone, today } from '@internationalized/date'
 import api from '@/services/api'
@@ -189,8 +189,6 @@ export default function DashboardPage() {
       </Navbar>
 
       <div className="max-w-7xl mx-auto p-4 md:p-6">
-        {loading && <Progress size="sm" isIndeterminate color="primary" className="mb-4" />}
-
         {error && (
           <Alert color="danger" variant="flat" title={error} className="mb-4" />
         )}
