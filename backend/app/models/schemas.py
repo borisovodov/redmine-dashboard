@@ -32,6 +32,7 @@ class FilterOptions(BaseModel):
     priorities: List[dict]
     assignees: List[dict]
     issue_types: List[dict]
+    categories: List[dict] = []
 
 
 class AnalyticsRequest(BaseModel):
@@ -42,6 +43,7 @@ class AnalyticsRequest(BaseModel):
     priorities: Optional[List[int]] = None
     assignees: Optional[List[int]] = None
     issue_types: Optional[List[int]] = None
+    categories: Optional[List[int]] = None
 
 
 class AnalyticsMetrics(BaseModel):

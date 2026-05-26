@@ -102,6 +102,8 @@ class RedmineClient:
                     params['assigned_to_id'] = ','.join(map(str, filters['assignees']))
                 if filters.get('issue_types'):
                     params['tracker_id'] = ','.join(map(str, filters['issue_types']))
+                if filters.get('categories'):
+                    params['category_id'] = ','.join(map(str, filters['categories']))
             
             while True:
                 params['offset'] = offset
@@ -180,4 +182,17 @@ class RedmineClient:
             return [m.get('user') for m in memberships if m.get('user')]
         except Exception as e:
             logger.error(f"Error fetching project members: {str(e)}")
+            return []
+    
+    def get_categories(self, project_id: int) -> List[Dict]:
+        """Get issue categories for a project"""
+        try:
+            response = self.session.get(
+                f"{self.base_url}/projects/{project_id}/issue_categories.json",
+                timeout=10
+            )
+            response.raise_for_status()
+            return response.json().get('issue_categories', [])
+        except Exception as e:
+            logger.error(f"Error fetching categories: {str(e)}")
             return []

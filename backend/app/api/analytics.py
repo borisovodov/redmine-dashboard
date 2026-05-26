@@ -18,7 +18,8 @@ async def get_analytics(
     date_to: str = Query(None),
     priorities: str = Query(None),
     assignees: str = Query(None),
-    issue_types: str = Query(None)
+    issue_types: str = Query(None),
+    categories: str = Query(None)
 ):
     """Get analytics metrics for a project"""
     if session_id not in sessions:
@@ -35,6 +36,8 @@ async def get_analytics(
             filters['assignees'] = [int(a) for a in assignees.split(',')]
         if issue_types:
             filters['issue_types'] = [int(t) for t in issue_types.split(',')]
+        if categories:
+            filters['categories'] = [int(c) for c in categories.split(',')]
         
         # Fetch issues
         issues = client.get_issues(
@@ -131,6 +134,31 @@ async def get_assignees(
     except Exception as e:
         logger.error(f"Error fetching assignees: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Failed to fetch assignees: {str(e)}")
+
+
+@router.get("/filters/categories")
+async def get_categories(
+    session_id: str = Query(...),
+    project_id: int = Query(...)
+):
+    """Get issue categories for a project"""
+    if session_id not in sessions:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+    
+    try:
+        client = sessions[session_id]['client']
+        categories = client.get_categories(project_id)
+        
+        return {
+            'categories': [
+                {'id': c['id'], 'name': c['name']}
+                for c in categories
+            ]
+        }
+    
+    except Exception as e:
+        logger.error(f"Error fetching categories: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Failed to fetch categories: {str(e)}")
 
 
 @router.get("/by_assignee")

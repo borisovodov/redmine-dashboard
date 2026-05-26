@@ -192,6 +192,12 @@ class AnalyticsEngine:
                 if i.get('tracker', {}).get('id') in filters['issue_types']
             ]
         
+        if filters.get('categories'):
+            filtered = [
+                i for i in filtered 
+                if i.get('category', {}).get('id') in filters['categories']
+            ]
+        
         return filtered
     
     @staticmethod

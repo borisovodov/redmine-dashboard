@@ -27,10 +27,12 @@ export default function DashboardPage() {
   const [selectedPriorities, setSelectedPriorities] = useState(new Set([]))
   const [selectedAssignees, setSelectedAssignees] = useState(new Set([]))
   const [selectedIssueTypes, setSelectedIssueTypes] = useState(new Set([]))
+  const [selectedCategories, setSelectedCategories] = useState(new Set([]))
   const [groupByAssignee, setGroupByAssignee] = useState(false)
   const [availablePriorities, setAvailablePriorities] = useState([])
   const [availableAssignees, setAvailableAssignees] = useState([])
   const [availableIssueTypes, setAvailableIssueTypes] = useState([])
+  const [availableCategories, setAvailableCategories] = useState([])
   const [metrics, setMetrics] = useState(null)
   const [loading, setLoading] = useState(false)
   const [loadingProjects, setLoadingProjects] = useState(false)
@@ -58,29 +60,36 @@ export default function DashboardPage() {
     setAvailablePriorities([])
     setAvailableAssignees([])
     setAvailableIssueTypes([])
+    setAvailableCategories([])
     setSelectedPriorities(new Set([]))
     setSelectedAssignees(new Set([]))
     setSelectedIssueTypes(new Set([]))
+    setSelectedCategories(new Set([]))
 
     if (!projectId) return
 
     try {
-      const [prioritiesRes, typesRes, assigneesRes] = await Promise.all([
+      const [prioritiesRes, typesRes, assigneesRes, categoriesRes] = await Promise.all([
         api.get('/analytics/filters/priorities'),
         api.get('/analytics/filters/issue_types'),
-        api.get('/analytics/filters/assignees', { params: { project_id: projectId } })
+        api.get('/analytics/filters/assignees', { params: { project_id: projectId } }),
+        api.get('/analytics/filters/categories', { params: { project_id: projectId } })
       ])
       setAvailablePriorities(prioritiesRes.data.priorities || [])
       setAvailableIssueTypes(typesRes.data.issue_types || [])
       setAvailableAssignees(assigneesRes.data.assignees || [])
+      setAvailableCategories(categoriesRes.data.categories || [])
     } catch {
       setError('Не удалось загрузить фильтры')
     }
   }
 
+  // Keep a ref to the latest applyFilters to avoid stale closure
+  const applyFiltersRef = useRef()
+  
   const onFilterChange = useCallback(() => {
     clearTimeout(filterTimeoutRef.current)
-    filterTimeoutRef.current = setTimeout(() => applyFilters(), 500)
+    filterTimeoutRef.current = setTimeout(() => applyFiltersRef.current(), 500)
   }, [])
 
   // Convert CalendarDate to YYYY-MM-DD string
@@ -125,7 +134,8 @@ export default function DashboardPage() {
           date_to: toDateString(dateTo) || '',
           priorities: Array.from(selectedPriorities).join(',') || '',
           assignees: Array.from(selectedAssignees).join(',') || '',
-          issue_types: Array.from(selectedIssueTypes).join(',') || ''
+          issue_types: Array.from(selectedIssueTypes).join(',') || '',
+          categories: Array.from(selectedCategories).join(',') || ''
         })
         const response = await api.post(`/analytics?${params.toString()}`)
         setMetrics(response.data)
@@ -136,6 +146,9 @@ export default function DashboardPage() {
       setLoading(false)
     }
   }
+
+  // Always keep ref pointing to latest applyFilters
+  applyFiltersRef.current = applyFilters
 
   const handleLogout = () => {
     localStorage.removeItem('sessionId')
@@ -290,6 +303,28 @@ export default function DashboardPage() {
                 items={toSelectItems(availableIssueTypes)}
                 selectedKeys={selectedIssueTypes}
                 onSelectionChange={(keys) => { setSelectedIssueTypes(keys); onFilterChange() }}
+                classNames={{ trigger: 'min-h-12' }}
+                renderValue={(items) => (
+                  <div className="flex flex-wrap gap-1">
+                    {items.map((item) => (
+                      <Chip key={item.key} size="sm" variant="flat" color="primary">{item.data?.label || item.key}</Chip>
+                    ))}
+                  </div>
+                )}
+              >
+                {(item) => <SelectItem key={item.key}>{item.label}</SelectItem>}
+              </Select>
+
+              <Select
+                label="Категории"
+                placeholder="Все"
+                variant="bordered"
+                color="primary"
+                labelPlacement="outside"
+                selectionMode="multiple"
+                items={toSelectItems(availableCategories)}
+                selectedKeys={selectedCategories}
+                onSelectionChange={(keys) => { setSelectedCategories(keys); onFilterChange() }}
                 classNames={{ trigger: 'min-h-12' }}
                 renderValue={(items) => (
                   <div className="flex flex-wrap gap-1">
