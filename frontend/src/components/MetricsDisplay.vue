@@ -7,7 +7,7 @@
           <v-card-text>
             <div class="text-center">
               <v-icon size="40" color="primary" class="mb-2">mdi-speedometer</v-icon>
-              <div class="text-h6">Average Close Time</div>
+              <div class="text-h6">Среднее время закрытия</div>
               <div class="text-h4 font-weight-bold text-primary">
                 {{ formatTime(metrics.average_close_time_hours) }}
               </div>
@@ -21,7 +21,7 @@
           <v-card-text>
             <div class="text-center">
               <v-icon size="40" color="secondary" class="mb-2">mdi-chart-line</v-icon>
-              <div class="text-h6">Median Close Time</div>
+              <div class="text-h6">Медианное время закрытия</div>
               <div class="text-h4 font-weight-bold text-secondary">
                 {{ formatTime(metrics.median_close_time_hours) }}
               </div>
@@ -35,7 +35,7 @@
           <v-card-text>
             <div class="text-center">
               <v-icon size="40" color="success" class="mb-2">mdi-counter</v-icon>
-              <div class="text-h6">Total Issues</div>
+              <div class="text-h6">Всего задач</div>
               <div class="text-h4 font-weight-bold text-success">
                 {{ metrics.total_issues }}
               </div>
@@ -47,15 +47,15 @@
 
     <!-- Assignee Breakdown (if enabled) -->
     <v-card v-if="groupByAssignee && metrics.by_assignee" class="mt-4">
-      <v-card-title>Metrics by Assignee</v-card-title>
+      <v-card-title>Метрики по исполнителям</v-card-title>
       <v-card-text>
         <v-table>
           <thead>
             <tr>
-              <th>Assignee</th>
-              <th>Total Issues</th>
-              <th>Avg Close Time</th>
-              <th>Median Close Time</th>
+              <th>Исполнитель</th>
+              <th>Всего задач</th>
+              <th>Среднее время</th>
+              <th>Медианное время</th>
             </tr>
           </thead>
           <tbody>

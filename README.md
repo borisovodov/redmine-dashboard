@@ -1,49 +1,49 @@
 # Redmine Analytics Dashboard
 
-Analytics dashboard for Redmine task management system. Displays metrics for task closure times, status transitions, and performance analytics.
+Дашборд аналитики для системы управления задачами Redmine. Отображает метрики времени закрытия задач, переходов по статусам и аналитику производительности.
 
-## Features
+## Возможности
 
-- 🔐 Secure authentication via Redmine API key
-- 📊 Real-time analytics and metrics
-- 📈 Interactive charts and visualizations
-- 🎯 Filterable by project, priority, assignee, and issue type
-- 👥 Group analytics by assignee
-- 🚀 Multi-user support
-- 🐳 Docker support for easy deployment
+- 🔐 Безопасная аутентификация через API-ключ Redmine
+- 📊 Аналитика и метрики в реальном времени
+- 📈 Интерактивные графики и визуализации
+- 🎯 Фильтрация по проекту, приоритету, исполнителю и типу задачи
+- 👥 Группировка аналитики по исполнителям
+- 🚀 Поддержка нескольких пользователей
+- 🐳 Поддержка Docker для простого развёртывания
 
-## Tech Stack
+## Технологический стек
 
-### Backend
-- **FastAPI** - Python web framework
-- **Uvicorn** - ASGI server
-- **Pydantic** - Data validation
-- **Requests** - HTTP client
+### Бэкенд
+- **FastAPI** — веб-фреймворк на Python
+- **Uvicorn** — ASGI-сервер
+- **Pydantic** — валидация данных
+- **Requests** — HTTP-клиент
 
-### Frontend
-- **Vue.js 3** - JavaScript framework
-- **Vuetify** - Material Design components
-- **Chart.js** - Charts and visualizations
-- **Vite** - Build tool
+### Фронтенд
+- **Vue.js 3** — JavaScript-фреймворк
+- **Vuetify** — компоненты Material Design
+- **Chart.js** — графики и визуализации
+- **Vite** — сборочный инструмент
 
-## Quick Start
+## Быстрый старт
 
-### Using Makefile (recommended)
+### Docker Compose (рекомендуется)
 
 ```bash
-# Install all dependencies
-make install
+# Сборка и запуск (production-режим)
+docker compose up -d --build
 
-# Start backend (terminal 1)
-make run-backend
+# Фронтенд: http://localhost:3000
+# Бэкенд API: http://localhost:8000
 
-# Start frontend (terminal 2)
-make run-frontend
+# Остановка
+docker compose down
 ```
 
-### Manual Setup
+### Ручная настройка (без Docker)
 
-#### Backend
+#### Бэкенд
 
 ```bash
 python3 -m venv .venv
@@ -52,60 +52,21 @@ pip install -r backend/requirements.txt
 
 cd backend
 uvicorn app.main:app --reload --port 8000
-# Backend: http://localhost:8000
+# Бэкенд: http://localhost:8000
 ```
 
-#### Frontend
+#### Фронтенд
 
 ```bash
 cd frontend
 npm install
 npm run dev
-# Frontend: http://localhost:5173
+# Фронтенд: http://localhost:5173
 ```
 
-### Production (Docker)
+## Конфигурация
 
-```bash
-# Build and start
-make docker-build
-make docker-up
-
-# Frontend: http://localhost:3000
-# Backend API: http://localhost:8000
-
-# Stop
-make docker-down
-```
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run server
-uvicorn app.main:app --reload
-# Server runs on http://localhost:8000
-```
-
-#### Frontend
-
-```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# Run development server
-npm run dev
-# Frontend runs on http://localhost:5173
-```
-
-## Configuration
-
-### Backend (.env)
+### Бэкенд (.env)
 
 ```
 DEBUG=true
@@ -115,103 +76,106 @@ CORS_ORIGINS=["http://localhost:3000", "http://localhost:5173"]
 SESSION_TIMEOUT_MINUTES=60
 ```
 
-### Frontend (.env)
+### Фронтенд (.env)
 
 ```
 VITE_API_URL=http://localhost:8000
 ```
 
-## Usage
+## Использование
 
-1. **Login**: Enter your Redmine URL and API key
-2. **Select Project**: Choose a project to analyze
-3. **Set Filters**: 
-   - Date range (from/to)
-   - Priorities
-   - Assignees
-   - Issue types
-4. **View Analytics**:
-   - Average and median close times
-   - Close time distribution chart
-   - Time spent in each status
-   - Metrics grouped by assignee (optional)
+1. **Вход**: введите URL Redmine и API-ключ
+2. **Выбор проекта**: выберите проект для анализа
+3. **Настройка фильтров**:
+   - Диапазон дат (с/по)
+   - Приоритеты
+   - Исполнители
+   - Типы задач
+4. **Просмотр аналитики**:
+   - Среднее и медианное время закрытия
+   - График распределения времени закрытия
+   - Время в каждом статусе
+   - Метрики с группировкой по исполнителям (опционально)
 
-## API Endpoints
+## API-эндпоинты
 
-### Authentication
-- `POST /auth/validate` - Validate credentials and create session
-- `POST /auth/logout` - Destroy session
+### Аутентификация
+- `POST /auth/validate` — проверить учётные данные и создать сессию
+- `POST /auth/logout` — завершить сессию
 
-### Projects
-- `GET /projects` - Get list of projects
+### Проекты
+- `GET /projects` — получить список проектов
 
-### Analytics
-- `POST /analytics` - Get analytics metrics
-- `GET /analytics/filters/priorities` - Get available priorities
-- `GET /analytics/filters/issue_types` - Get available issue types
-- `GET /analytics/filters/assignees` - Get project assignees
-- `GET /analytics/by_assignee` - Get analytics grouped by assignee
+### Аналитика
+- `POST /analytics` — получить метрики аналитики
+- `GET /analytics/filters/priorities` — получить доступные приоритеты
+- `GET /analytics/filters/issue_types` — получить доступные типы задач
+- `GET /analytics/filters/assignees` — получить исполнителей проекта
+- `GET /analytics/by_assignee` — получить аналитику с группировкой по исполнителям
 
-## Building for Production
+## Сборка для production
 
-### Backend
+### Бэкенд
 ```bash
-# Build Docker image
+# Сборка Docker-образа
 docker build -f Dockerfile.backend -t redmine-analytics-backend .
 
-# Run
+# Запуск
 docker run -p 8000:8000 redmine-analytics-backend
 ```
 
-### Frontend
+### Фронтенд
 ```bash
 cd frontend
 
-# Build static files
+# Сборка статических файлов
 npm run build
 
-# Output in dist/ directory
+# Результат в директории dist/
 ```
 
-## Error Handling
+## Обработка ошибок
 
-The application handles:
-- Invalid API credentials
-- Network timeouts
-- Redmine API errors
-- Missing data
-- Session expiration
+Приложение обрабатывает:
+- Неверные учётные данные API
+- Таймауты сети
+- Ошибки Redmine API
+- Отсутствующие данные
+- Истечение сессии
 
-## Known Limitations
+## Известные ограничения
 
-- No persistent data storage (session-based only)
-- Depends on Redmine API rate limits
-- Data is fetched on every request (not cached)
-- Single-instance deployment (no scaling)
+- Нет постоянного хранилища данных (только сессионное)
+- Зависимость от ограничений частоты запросов Redmine API
+- Данные запрашиваются при каждом обращении (без кеширования)
+- Развёртывание в одном экземпляре (без масштабирования)
 
-## Future Enhancements
+## Планы по развитию
 
-- [ ] Export to CSV/PDF
-- [ ] Real-time data synchronization with WebSockets
-- [ ] Period comparison
-- [ ] Custom field support
-- [ ] Report saving and scheduling
-- [ ] LDAP/SSO integration
-- [ ] Caching layer (Redis)
+- [ ] Экспорт в CSV/PDF
+- [ ] Синхронизация данных в реальном времени через WebSockets
+- [ ] Сравнение периодов
+- [ ] Поддержка пользовательских полей
+- [ ] Сохранение отчётов и планирование
+- [ ] Интеграция LDAP/SSO
+- [ ] Слой кеширования (Redis)
 
-## Troubleshooting
+## Устранение неполадок
 
-### "Invalid API key" error
-- Verify Redmine URL is correct (e.g., https://redmine.example.com)
-- Check API key is valid in Redmine user settings
-- Ensure Redmine is accessible from application
+### Ошибка «Invalid API key»
+- Проверьте правильность URL Redmine (например, https://redmine.example.com)
+- Проверьте, что API-ключ действителен в настройках пользователя Redmine
+- Убедитесь, что Redmine доступен из приложения
 
-### Charts not displaying
-- Check browser console for errors
-- Verify data is loaded in browser DevTools Network tab
-- Clear browser cache and reload
+### Графики не отображаются
+- Проверьте консоль браузера на наличие ошибок
+- Проверьте загрузку данных во вкладке Network инструментов разработчика
+- Очистите кеш браузера и перезагрузите страницу
 
-### CORS errors
+### Ошибки CORS
+- Убедитесь, что `CORS_ORIGINS` в `.env` бэкенда содержит адрес вашего фронтенда
+- При использовании Docker проверьте, что nginx проксирует запросы `/api/` на бэкенд
+- В режиме разработки проверьте настройки прокси в `vite.config.js`
 - Check CORS_ORIGINS in backend .env
 - Ensure frontend URL is in CORS whitelist
 - Backend must be running on correct host/port

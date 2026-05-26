@@ -11,7 +11,7 @@
               <div class="py-2">
                 <v-text-field
                   v-model="redmineUrl"
-                  label="Redmine URL"
+                  label="URL Redmine"
                   type="text"
                   placeholder="https://redmine.example.com"
                   prepend-icon="mdi-link"
@@ -22,7 +22,7 @@
               <div class="py-2">
                 <v-text-field
                   v-model="apiKey"
-                  label="API Key"
+                  label="API-ключ"
                   type="password"
                   prepend-icon="mdi-key"
                   :error-messages="errors.key"
@@ -45,7 +45,7 @@
                 :loading="loading"
                 class="mt-4"
               >
-                Connect
+                Подключиться
               </v-btn>
             </v-form>
           </v-card-text>
@@ -80,6 +80,10 @@ export default {
       }
     }
   },
+  mounted() {
+    this.redmineUrl = localStorage.getItem('redmineUrl') || ''
+    this.apiKey = localStorage.getItem('apiKey') || ''
+  },
   methods: {
     clearErrors() {
       this.errors = {
@@ -93,10 +97,10 @@ export default {
 
       // Validation
       if (!this.redmineUrl) {
-        this.errors.url.push('Redmine URL is required')
+        this.errors.url.push('Укажите URL Redmine')
       }
       if (!this.apiKey) {
-        this.errors.key.push('API Key is required')
+        this.errors.key.push('Укажите API-ключ')
       }
 
       if (this.errors.url.length > 0 || this.errors.key.length > 0) {
@@ -114,11 +118,12 @@ export default {
         // Save session
         localStorage.setItem('sessionId', response.data.session_id)
         localStorage.setItem('redmineUrl', this.redmineUrl)
+        localStorage.setItem('apiKey', this.apiKey)
 
         // Redirect to dashboard
         this.$router.push('/dashboard')
       } catch (error) {
-        this.errors.general = error.response?.data?.detail || 'Authentication failed. Check your credentials.'
+        this.errors.general = error.response?.data?.detail || 'Ошибка аутентификации. Проверьте учётные данные.'
       } finally {
         this.loading = false
       }

@@ -1,6 +1,6 @@
 <template>
   <v-app>
-    <v-app-bar color="primary" dark>
+    <v-app-bar color="primary" dark app>
       <v-app-bar-title>Redmine Analytics Dashboard</v-app-bar-title>
       <v-spacer></v-spacer>
       <v-btn icon @click="handleLogout">
@@ -8,6 +8,7 @@
       </v-btn>
     </v-app-bar>
 
+    <v-main>
     <v-container fluid class="pa-4">
       <!-- Loading State -->
       <v-progress-linear v-if="loading" indeterminate color="primary"></v-progress-linear>
@@ -19,7 +20,7 @@
 
       <!-- Filters -->
       <v-card class="mb-4">
-        <v-card-title>Filters</v-card-title>
+        <v-card-title>Фильтры</v-card-title>
         <v-card-text>
           <v-row>
             <!-- Project Selector -->
@@ -29,7 +30,7 @@
                 :items="projects"
                 item-title="name"
                 item-value="id"
-                label="Project"
+                label="Проект"
                 @update:modelValue="onProjectChange"
                 :loading="loadingProjects"
               />
@@ -39,7 +40,7 @@
             <v-col cols="12" sm="6" md="3">
               <v-text-field
                 v-model="dateFrom"
-                label="From Date"
+                label="Дата с"
                 type="date"
                 @update:modelValue="onFilterChange"
               />
@@ -48,7 +49,7 @@
             <v-col cols="12" sm="6" md="3">
               <v-text-field
                 v-model="dateTo"
-                label="To Date"
+                label="Дата по"
                 type="date"
                 @update:modelValue="onFilterChange"
               />
@@ -62,7 +63,7 @@
                 :loading="loading"
                 block
               >
-                Apply Filters
+                Применить фильтры
               </v-btn>
             </v-col>
           </v-row>
@@ -76,7 +77,7 @@
                 :items="availablePriorities"
                 item-title="name"
                 item-value="id"
-                label="Priorities"
+                label="Приоритеты"
                 multiple
                 chips
                 @update:modelValue="onFilterChange"
@@ -90,7 +91,7 @@
                 :items="availableAssignees"
                 item-title="name"
                 item-value="id"
-                label="Assignees"
+                label="Исполнители"
                 multiple
                 chips
                 @update:modelValue="onFilterChange"
@@ -104,7 +105,7 @@
                 :items="availableIssueTypes"
                 item-title="name"
                 item-value="id"
-                label="Issue Types"
+                label="Типы задач"
                 multiple
                 chips
                 @update:modelValue="onFilterChange"
@@ -115,7 +116,7 @@
             <v-col cols="12" sm="6" md="3">
               <v-checkbox
                 v-model="groupByAssignee"
-                label="Group by Assignee"
+                label="Группировать по исполнителям"
                 @update:modelValue="onFilterChange"
               />
             </v-col>
@@ -135,7 +136,7 @@
         <!-- Distribution Chart -->
         <v-col cols="12" md="6">
           <v-card>
-            <v-card-title>Close Time Distribution</v-card-title>
+            <v-card-title>Распределение времени закрытия</v-card-title>
             <v-card-text>
               <ClosureTimeDistributionChart :data="metrics.distribution_data" />
             </v-card-text>
@@ -145,7 +146,7 @@
         <!-- Status Time Chart -->
         <v-col cols="12" md="6">
           <v-card>
-            <v-card-title>Time in Status (hours)</v-card-title>
+            <v-card-title>Время в статусах (часы)</v-card-title>
             <v-card-text>
               <StatusTimeChart :data="metrics.status_time_data" />
             </v-card-text>
@@ -155,9 +156,10 @@
 
       <!-- No Data State -->
       <v-alert v-if="!loading && !metrics && selectedProject" type="info">
-        Select filters and click "Apply Filters" to see analytics
+        Выберите фильтры и нажмите «Применить фильтры», чтобы увидеть аналитику
       </v-alert>
     </v-container>
+    </v-main>
   </v-app>
 </template>
 
@@ -204,7 +206,7 @@ export default {
         const response = await api.get('/projects')
         this.projects = response.data.projects
       } catch (error) {
-        this.error = 'Failed to load projects'
+        this.error = 'Не удалось загрузить проекты'
       } finally {
         this.loadingProjects = false
       }
@@ -234,7 +236,7 @@ export default {
         this.availableIssueTypes = typesRes.data.issue_types
         this.availableAssignees = assigneesRes.data.assignees
       } catch (error) {
-        this.error = 'Failed to load filters'
+        this.error = 'Не удалось загрузить фильтры'
       }
     },
     onFilterChange() {
@@ -246,7 +248,7 @@ export default {
     },
     async applyFilters() {
       if (!this.selectedProject) {
-        this.error = 'Please select a project'
+        this.error = 'Выберите проект'
         return
       }
 
@@ -290,14 +292,13 @@ export default {
           this.metrics = response.data
         }
       } catch (error) {
-        this.error = error.response?.data?.detail || 'Failed to load analytics'
+        this.error = error.response?.data?.detail || 'Не удалось загрузить аналитику'
       } finally {
         this.loading = false
       }
     },
     handleLogout() {
       localStorage.removeItem('sessionId')
-      localStorage.removeItem('redmineUrl')
       this.$router.push('/login')
     }
   }

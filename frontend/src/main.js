@@ -4,6 +4,7 @@ import 'vuetify/styles'
 import { createVuetify } from 'vuetify'
 import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
+import { ru } from 'vuetify/locale'
 
 import App from './App.vue'
 import LoginPage from './pages/LoginPage.vue'
@@ -12,6 +13,10 @@ import DashboardPage from './pages/DashboardPage.vue'
 const vuetify = createVuetify({
   components,
   directives,
+  locale: {
+    locale: 'ru',
+    messages: { ru },
+  },
   theme: {
     defaultTheme: 'light',
     themes: {

@@ -24,10 +24,10 @@ export default {
   computed: {
     chartData() {
       return {
-        labels: ['1 day', '2-3 days', '4-7 days', '8-14 days', '15-30 days', '30+ days'],
+        labels: ['1 день', '2-3 дня', '4-7 дней', '8-14 дней', '15-30 дней', '30+ дней'],
         datasets: [
           {
-            label: 'Number of Issues',
+            label: 'Количество задач',
             data: [
               this.data['1-day'] || 0,
               this.data['2-3-days'] || 0,
