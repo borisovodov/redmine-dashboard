@@ -196,3 +196,49 @@ class RedmineClient:
         except Exception as e:
             logger.error(f"Error fetching categories: {str(e)}")
             return []
+    
+    def enrich_issues_with_journals(self, issues: List[Dict]) -> List[Dict]:
+        """
+        Fetch journal history for each issue individually.
+        
+        The Redmine list endpoint (/issues.json) does not include journals even
+        with include=journals on some instances. We must fetch each issue
+        individually via GET /issues/{id}.json?include=journals.
+        
+        Uses ThreadPoolExecutor for concurrent fetching.
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        
+        if not issues:
+            return issues
+        
+        issue_map = {issue['id']: issue for issue in issues}
+        results = []
+        
+        def fetch_one(issue_id):
+            try:
+                response = self.session.get(
+                    f"{self.base_url}/issues/{issue_id}.json",
+                    params={'include': 'journals'},
+                    timeout=20
+                )
+                if response.status_code == 200:
+                    data = response.json().get('issue', {})
+                    return (issue_id, data.get('journals', []))
+                return (issue_id, [])
+            except Exception as e:
+                logger.warning(f"Error fetching journals for issue {issue_id}: {e}")
+                return (issue_id, [])
+        
+        # Fetch concurrently, max 10 at a time
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = {executor.submit(fetch_one, iid): iid for iid in issue_map}
+            for future in as_completed(futures):
+                try:
+                    issue_id, journals = future.result()
+                    if issue_id in issue_map:
+                        issue_map[issue_id]['journals'] = journals
+                except Exception as e:
+                    logger.warning(f"Future error: {e}")
+        
+        return list(issue_map.values())

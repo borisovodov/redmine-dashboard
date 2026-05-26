@@ -9,17 +9,22 @@ logger = logging.getLogger(__name__)
 class AnalyticsEngine:
     """Analytics calculations engine"""
     
-    # List of closed status names (usually, but can vary)
-    CLOSED_STATUSES = ['Closed', 'Rejected', 'Done']
+    # Default closed status names (sensible defaults for most Redmine instances)
+    DEFAULT_CLOSED_STATUSES = ['Closed', 'Done', 'Rejected', 'Resolved']
     
     @staticmethod
-    def calculate_metrics(issues: List[Dict], closed_statuses: Optional[List[str]] = None) -> Dict:
+    def calculate_metrics(issues: List[Dict], closed_statuses: Optional[List[str]] = None,
+                          statuses_map: Optional[Dict[int, str]] = None) -> Dict:
         """
-        Calculate analytics metrics from issues
+        Calculate analytics metrics from issues.
+        
+        Only issues currently in one of the closed_statuses are included.
         
         Args:
             issues: List of Redmine issues
-            closed_statuses: List of status names that count as "closed"
+            closed_statuses: List of status names that count as "closed".
+                             Only issues in these statuses are analyzed.
+            statuses_map: Dict mapping status_id (int) to status name (str)
         
         Returns:
             Dictionary with calculated metrics
@@ -33,9 +38,9 @@ class AnalyticsEngine:
                 'status_time_data': {}
             }
         
-        closed_statuses = closed_statuses or AnalyticsEngine.CLOSED_STATUSES
+        closed_statuses = closed_statuses or AnalyticsEngine.DEFAULT_CLOSED_STATUSES
         
-        # Filter for closed issues
+        # Keep only issues that are currently in a closed status
         closed_issues = [
             issue for issue in issues 
             if issue.get('status', {}).get('name') in closed_statuses
@@ -60,15 +65,20 @@ class AnalyticsEngine:
         # Calculate distribution (by days)
         distribution = AnalyticsEngine._calculate_distribution(close_times_hours)
         
-        # Calculate status times
-        status_times = AnalyticsEngine._calculate_status_times(closed_issues)
+        # Calculate status times only for closed issues (historical snapshot)
+        status_times = AnalyticsEngine._calculate_status_times(closed_issues, statuses_map)
+        
+        # Exclude closed statuses from the status time chart — we care about
+        # bottlenecks BEFORE closure, not time spent in closed states
+        for cs in closed_statuses:
+            status_times.pop(cs, None)
         
         # Calculate metrics
         avg_hours = sum(close_times_hours) / len(close_times_hours) if close_times_hours else 0
         median_hours = statistics.median(close_times_hours) if close_times_hours else 0
         
         return {
-            'total_issues': len(issues),
+            'total_issues': len(closed_issues),
             'closed_issues': len(closed_issues),
             'average_close_time_hours': round(avg_hours, 2),
             'median_close_time_hours': round(median_hours, 2),
@@ -106,65 +116,134 @@ class AnalyticsEngine:
         return distribution
     
     @staticmethod
-    def _calculate_status_times(issues: List[Dict]) -> Dict:
-        """Calculate average time spent in each status"""
-        status_times = {}
+    def _calculate_status_times(issues: List[Dict], 
+                                statuses_map: Optional[Dict[int, str]] = None) -> Dict:
+        """
+        Calculate total time spent in each status across ALL issues (historical snapshot).
+        
+        Uses Redmine journal history to track when each issue entered/left each status.
+        For open issues, time from last status change to "now" is also counted.
+        
+        Args:
+            issues: List of Redmine issues (with journals included)
+            statuses_map: Dict mapping status_id (int) to status name (str).
+                          If not provided, falls back to using IDs as strings.
+        
+        Returns:
+            Dict of {status_name: total_hours} summed across all issues
+        """
+        status_times: Dict[str, float] = {}
+        now = datetime.now().astimezone()
         
         for issue in issues:
             try:
-                # Get journals (history) for status changes
                 journals = issue.get('journals', [])
                 
-                # Sort by date
+                if not journals:
+                    # No history — just count current status time from creation
+                    created_on = datetime.fromisoformat(
+                        issue['created_on'].replace('Z', '+00:00')
+                    )
+                    end_time = now
+                    closed_on_str = issue.get('closed_on')
+                    if closed_on_str:
+                        end_time = datetime.fromisoformat(
+                            closed_on_str.replace('Z', '+00:00')
+                        )
+                    
+                    status_name = AnalyticsEngine._resolve_status_name(
+                        issue.get('status', {}), statuses_map
+                    )
+                    hours = (end_time - created_on).total_seconds() / 3600
+                    status_times[status_name] = status_times.get(status_name, 0) + hours
+                    continue
+                
+                # Sort journals by date
                 journals_sorted = sorted(journals, key=lambda x: x['created_on'])
+                
+                # Determine initial status: use old_value from first status_id change,
+                # fall back to issue's current status
+                initial_status_name = None
+                for journal in journals_sorted:
+                    for detail in journal.get('details', []):
+                        if detail.get('name') == 'status_id':
+                            old_id = detail.get('old_value')
+                            if old_id:
+                                initial_status_name = AnalyticsEngine._resolve_status_name(
+                                    {'id': int(old_id)}, statuses_map
+                                )
+                            break
+                    if initial_status_name:
+                        break
+                
+                if not initial_status_name:
+                    initial_status_name = AnalyticsEngine._resolve_status_name(
+                        issue.get('status', {}), statuses_map
+                    )
                 
                 created_on = datetime.fromisoformat(
                     issue['created_on'].replace('Z', '+00:00')
                 )
                 
-                # Iterate through journals and track status changes
-                current_status = issue.get('status', {}).get('name', 'Unknown')
+                current_status = initial_status_name
                 status_start_time = created_on
                 
+                # Walk through journals and accumulate time per status
                 for journal in journals_sorted:
                     journal_time = datetime.fromisoformat(
                         journal['created_on'].replace('Z', '+00:00')
                     )
                     
-                    for change in journal.get('details', []):
-                        if change['name'] == 'status':
-                            # Record time in current status
+                    for detail in journal.get('details', []):
+                        if detail.get('name') == 'status_id':
+                            new_id = detail.get('new_value')
+                            if new_id is None:
+                                continue
+                            
+                            # Record time spent in current_status
                             time_in_status = (journal_time - status_start_time).total_seconds() / 3600
+                            if time_in_status > 0:
+                                status_times[current_status] = \
+                                    status_times.get(current_status, 0) + time_in_status
                             
-                            if current_status not in status_times:
-                                status_times[current_status] = []
-                            status_times[current_status].append(time_in_status)
-                            
-                            # Update current status
-                            current_status = change['new_value']
+                            # Move to next status
+                            current_status = AnalyticsEngine._resolve_status_name(
+                                {'id': int(new_id)}, statuses_map
+                            )
                             status_start_time = journal_time
                 
-                # Calculate last status time
-                if issue.get('closed_on'):
-                    closed_on = datetime.fromisoformat(
-                        issue['closed_on'].replace('Z', '+00:00')
+                # Record time in final status (from last change to close or now)
+                end_time = now
+                closed_on_str = issue.get('closed_on')
+                if closed_on_str:
+                    end_time = datetime.fromisoformat(
+                        closed_on_str.replace('Z', '+00:00')
                     )
-                    time_in_status = (closed_on - status_start_time).total_seconds() / 3600
-                    
-                    if current_status not in status_times:
-                        status_times[current_status] = []
-                    status_times[current_status].append(time_in_status)
+                
+                time_in_status = (end_time - status_start_time).total_seconds() / 3600
+                if time_in_status > 0:
+                    status_times[current_status] = \
+                        status_times.get(current_status, 0) + time_in_status
             
             except Exception as e:
                 logger.warning(f"Error calculating status times for issue {issue.get('id')}: {str(e)}")
                 continue
         
-        # Convert to average times
-        average_status_times = {}
-        for status, times in status_times.items():
-            average_status_times[status] = round(sum(times) / len(times), 2) if times else 0
+        # Round values
+        return {k: round(v, 2) for k, v in status_times.items()}
+    
+    @staticmethod
+    def _resolve_status_name(status_obj: Dict, 
+                             statuses_map: Optional[Dict[int, str]] = None) -> str:
+        """Resolve status name from a status dict using the map or fallback."""
+        status_id = status_obj.get('id') if isinstance(status_obj, dict) else None
+        status_name = status_obj.get('name') if isinstance(status_obj, dict) else str(status_obj)
         
-        return average_status_times
+        if statuses_map and status_id is not None:
+            sid = status_id if isinstance(status_id, int) else int(status_id)
+            return statuses_map.get(sid, status_name or f"Status #{sid}")
+        
+        return status_name or f"Status #{status_id}" if status_id else "Unknown"
     
     @staticmethod
     def filter_issues(issues: List[Dict], filters: Optional[Dict] = None) -> List[Dict]:

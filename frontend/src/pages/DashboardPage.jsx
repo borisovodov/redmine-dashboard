@@ -34,6 +34,10 @@ export default function DashboardPage() {
   const [availableAssignees, setAvailableAssignees] = useState([])
   const [availableIssueTypes, setAvailableIssueTypes] = useState([])
   const [availableCategories, setAvailableCategories] = useState([])
+  const [availableStatuses, setAvailableStatuses] = useState([])
+  // Default closed status names — mapped to IDs after statuses load
+  const DEFAULT_CLOSED_NAMES = ['Closed', 'Done', 'Rejected', 'Resolved']
+  const [selectedClosedStatuses, setSelectedClosedStatuses] = useState(new Set([]))
   const [metrics, setMetrics] = useState(null)
   const [issues, setIssues] = useState([])
   const [loading, setLoading] = useState(false)
@@ -68,20 +72,32 @@ export default function DashboardPage() {
     setSelectedAssignees(new Set([]))
     setSelectedIssueTypes(new Set([]))
     setSelectedCategories(new Set([]))
+    setSelectedClosedStatuses(new Set([]))
 
     if (!projectId) return
 
     try {
-      const [prioritiesRes, typesRes, assigneesRes, categoriesRes] = await Promise.all([
+      const [prioritiesRes, typesRes, assigneesRes, categoriesRes, statusesRes] = await Promise.all([
         api.get('/analytics/filters/priorities'),
         api.get('/analytics/filters/issue_types'),
         api.get('/analytics/filters/assignees', { params: { project_id: projectId } }),
-        api.get('/analytics/filters/categories', { params: { project_id: projectId } })
+        api.get('/analytics/filters/categories', { params: { project_id: projectId } }),
+        api.get('/analytics/filters/statuses')
       ])
       setAvailablePriorities(prioritiesRes.data.priorities || [])
       setAvailableIssueTypes(typesRes.data.issue_types || [])
       setAvailableAssignees(assigneesRes.data.assignees || [])
       setAvailableCategories(categoriesRes.data.categories || [])
+      
+      const statuses = statusesRes.data.statuses || []
+      setAvailableStatuses(statuses)
+      // Pre-select default closed statuses by matching names
+      const defaultIds = new Set(
+        statuses
+          .filter(s => DEFAULT_CLOSED_NAMES.includes(s.name))
+          .map(s => String(s.id))
+      )
+      setSelectedClosedStatuses(defaultIds)
     } catch {
       setError('Не удалось загрузить фильтры')
     }
@@ -101,6 +117,13 @@ export default function DashboardPage() {
     return calDate.toString()
   }
 
+  // Convert status IDs to names for API
+  const closedStatusNames = () => {
+    const idToName = {}
+    availableStatuses.forEach(s => { idToName[String(s.id)] = s.name })
+    return Array.from(selectedClosedStatuses).map(id => idToName[id] || id)
+  }
+
   const applyFilters = async () => {
     if (!selectedProject) {
       setError('Выберите проект')
@@ -116,7 +139,8 @@ export default function DashboardPage() {
           params: {
             project_id: selectedProject,
             date_from: toDateString(dateFrom) || undefined,
-            date_to: toDateString(dateTo) || undefined
+            date_to: toDateString(dateTo) || undefined,
+            closed_statuses: closedStatusNames().join(',') || undefined
           }
         })
         const byAssignee = response.data.by_assignee
@@ -139,7 +163,8 @@ export default function DashboardPage() {
           priorities: Array.from(selectedPriorities).join(',') || '',
           assignees: Array.from(selectedAssignees).join(',') || '',
           issue_types: Array.from(selectedIssueTypes).join(',') || '',
-          categories: Array.from(selectedCategories).join(',') || ''
+          categories: Array.from(selectedCategories).join(',') || '',
+          closed_statuses: closedStatusNames().join(',') || ''
         })
         const response = await api.post(`/analytics?${params.toString()}`)
         setMetrics(response.data)
@@ -340,6 +365,28 @@ export default function DashboardPage() {
                 {(item) => <SelectItem key={item.key}>{item.label}</SelectItem>}
               </Select>
 
+              <Select
+                label="Закрытые статусы"
+                placeholder="Выберите статусы"
+                variant="bordered"
+                color="success"
+                labelPlacement="outside"
+                selectionMode="multiple"
+                items={toSelectItems(availableStatuses)}
+                selectedKeys={selectedClosedStatuses}
+                onSelectionChange={(keys) => { setSelectedClosedStatuses(keys); onFilterChange() }}
+                classNames={{ trigger: 'min-h-12' }}
+                renderValue={(items) => (
+                  <div className="flex flex-wrap gap-1">
+                    {items.map((item) => (
+                      <Chip key={item.key} size="sm" variant="flat" color="success">{item.data?.label || item.key}</Chip>
+                    ))}
+                  </div>
+                )}
+              >
+                {(item) => <SelectItem key={item.key}>{item.label}</SelectItem>}
+              </Select>
+
               <div className="flex items-center h-full pt-6">
                 <Checkbox
                   isSelected={groupByAssignee}
@@ -372,9 +419,10 @@ export default function DashboardPage() {
 
             <Card shadow="sm" radius="lg">
               <CardHeader className="pb-0 pt-4 px-5">
-                <h3 className="text-lg font-semibold">Время в статусах (часы)</h3>
+                <h3 className="text-lg font-semibold">Время в статусах — суммарно по всем задачам (часы)</h3>
               </CardHeader>
               <CardBody className="px-5 pb-5">
+                <p className="text-xs text-gray-500 mb-2">Исторический срез по закрытым задачам: сколько суммарно часов каждая задача провела в статусах до закрытия</p>
                 <StatusTimeChart data={metrics.status_time_data} />
               </CardBody>
             </Card>

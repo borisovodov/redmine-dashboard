@@ -42,7 +42,7 @@ export default function StatusTimeChart({ data }) {
           label: function (context) {
             const label = context.label || ''
             const value = Math.round(context.parsed * 100) / 100
-            return `${label}: ${value}h`
+            return `${label}: ${value} ч (суммарно)`
           }
         }
       }
