@@ -41,7 +41,7 @@ Redmine instance (external, user-provided)
 | Frontend framework | React | ^18.3.1 |
 | UI library | HeroUI (`@heroui/react`) | ^2.7.6 |
 | Styling | Tailwind CSS | ^3.4.0 |
-| Charts | Chart.js 4 + react-chartjs-2 | ^4.4.0 / ^5.2.0 |
+| Charts | Recharts | ^2.12 |
 | HTTP client (browser) | Axios | ^1.6.0 |
 | Router | React Router DOM | ^6.26.0 |
 | Build tool | Vite | ^5.0.0 |
@@ -216,7 +216,7 @@ All session-authenticated endpoints require `?session_id=<uuid>` query param. Un
 - No caching — every analytics request fetches ALL issues from Redmine API (pagination: 100 per page)
 - Single-instance deployment (in-memory sessions, no shared state)
 - Hardcoded closed status names may not match all Redmine instances
-- Date filter in `redmine_client.py` overwrites `created_on` when both `date_from` and `date_to` are set (line: `params['created_on'] = f'<={date_to}' if date_to else f'>={date_from}'` — should use separate `>=` and `<=` filters or Redmine's range syntax `><`)
+- Date filter uses `closed_on` (Redmine range syntax `><from|to`) — filters by close date, not creation date
 - The `by_assignee` endpoint ignores priority/assignee/type/category filters — it only accepts `project_id`, `date_from`, `date_to`
 
 ## Common Troubleshooting

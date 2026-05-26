@@ -12,9 +12,15 @@ function formatCloseTime(hours) {
   return `${days}д`
 }
 
+function formatDate(isoString) {
+  if (!isoString) return '—'
+  const d = new Date(isoString)
+  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
 const ROWS_PER_PAGE = 15
 
-export default function IssuesTable({ issues }) {
+export default function IssuesTable({ issues, selectedKeys, onSelectionChange }) {
   const [page, setPage] = useState(1)
   const [sortDescriptor, setSortDescriptor] = useState({ column: 'close_time_hours', direction: 'descending' })
 
@@ -50,7 +56,7 @@ export default function IssuesTable({ issues }) {
   if (!issues?.length) return null
 
   return (
-    <Card shadow="sm" radius="lg" className="mt-6">
+    <Card shadow="sm" radius="lg" className="mt-6 mb-6">
       <CardHeader className="pb-0 pt-4 px-5 flex justify-between items-center">
         <h3 className="text-lg font-semibold">Задачи ({issues.length})</h3>
       </CardHeader>
@@ -60,6 +66,9 @@ export default function IssuesTable({ issues }) {
           shadow="none"
           radius="md"
           isStriped
+          selectionMode="multiple"
+          selectedKeys={selectedKeys}
+          onSelectionChange={onSelectionChange}
           sortDescriptor={sortDescriptor}
           onSortChange={setSortDescriptor}
           classNames={{ th: 'text-xs font-semibold uppercase text-default-500' }}
@@ -85,6 +94,7 @@ export default function IssuesTable({ issues }) {
             <TableColumn key="status" allowsSorting>Статус</TableColumn>
             <TableColumn key="priority" allowsSorting>Приоритет</TableColumn>
             <TableColumn key="assigned_to" allowsSorting>Исполнитель</TableColumn>
+            <TableColumn key="closed_on" allowsSorting>Дата закрытия</TableColumn>
             <TableColumn key="close_time_hours" allowsSorting>Время закрытия</TableColumn>
           </TableHeader>
           <TableBody emptyContent="Нет задач">
@@ -131,6 +141,9 @@ export default function IssuesTable({ issues }) {
                 </TableCell>
                 <TableCell>
                   <span className="text-xs text-default-600">{issue.assigned_to || '—'}</span>
+                </TableCell>
+                <TableCell>
+                  <span className="text-xs text-default-500">{formatDate(issue.closed_on)}</span>
                 </TableCell>
                 <TableCell>
                   <Chip

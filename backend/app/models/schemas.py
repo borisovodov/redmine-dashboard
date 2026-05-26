@@ -52,10 +52,12 @@ class IssueSummary(BaseModel):
     subject: str
     status: str
     close_time_hours: Optional[float] = None
+    closed_on: Optional[str] = None
     url: str
     tracker: str = ""
     priority: str = ""
     assigned_to: str = ""
+    status_times: dict = {}
 
 
 class AnalyticsMetrics(BaseModel):

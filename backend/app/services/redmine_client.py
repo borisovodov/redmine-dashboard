@@ -66,12 +66,18 @@ class RedmineClient:
     def get_issues(self, project_id: int, date_from: str = None, date_to: str = None,
                    filters: Optional[Dict] = None) -> List[Dict]:
         """
-        Get issues for a project
+        Get issues for a project, optionally filtered by close date.
+        
+        Date filtering uses closed_on (close date):
+        - No dates: all issues
+        - date_from only: closed_on >= date_from
+        - date_to only: closed_on <= date_to
+        - Both: closed_on between date_from and date_to
         
         Args:
             project_id: Redmine project ID
-            date_from: Filter by start date (YYYY-MM-DD)
-            date_to: Filter by end date (YYYY-MM-DD)
+            date_from: Filter by close date start (YYYY-MM-DD)
+            date_to: Filter by close date end (YYYY-MM-DD)
             filters: Additional filters (priorities, assignees, etc.)
         """
         try:
@@ -88,11 +94,13 @@ class RedmineClient:
                 'include': 'journals,changesets'  # Include history for status transitions
             }
             
-            # Add date filters
-            if date_from:
-                params['created_on'] = f'>={date_from}'
-            if date_to:
-                params['created_on'] = f'<={date_to}' if date_to else f'>={date_from}'
+            # Add date filters — filter by close date (closed_on), not creation date
+            if date_from and date_to:
+                params['closed_on'] = f'><{date_from}|{date_to}'
+            elif date_from:
+                params['closed_on'] = f'>={date_from}'
+            elif date_to:
+                params['closed_on'] = f'<={date_to}'
             
             # Add other filters
             if filters:

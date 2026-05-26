@@ -20,7 +20,9 @@ async def get_analytics(
     assignees: str = Query(None),
     issue_types: str = Query(None),
     categories: str = Query(None),
-    closed_statuses: str = Query(None)
+    closed_statuses: str = Query(None),
+    tracked_statuses: str = Query(None),
+    subject: str = Query(None)
 ):
     """Get analytics metrics for a project"""
     if session_id not in sessions:
@@ -45,6 +47,11 @@ async def get_analytics(
         if closed_statuses:
             closed_statuses_list = [s.strip() for s in closed_statuses.split(',') if s.strip()]
         
+        # Parse tracked statuses — only these appear in the status time chart
+        tracked_statuses_list = None
+        if tracked_statuses:
+            tracked_statuses_list = [s.strip() for s in tracked_statuses.split(',') if s.strip()]
+        
         # Fetch issues
         issues = client.get_issues(
             project_id=project_id,
@@ -58,9 +65,14 @@ async def get_analytics(
         statuses_map = {s['id']: s['name'] for s in statuses}
         logger.info(f"Loaded {len(statuses_map)} statuses for name resolution")
         
-        # Filter issues
+        # Filter issues by other criteria
         if filters:
             issues = AnalyticsEngine.filter_issues(issues, filters)
+        
+        # Filter by subject substring (case-insensitive)
+        if subject:
+            subject_lower = subject.strip().lower()
+            issues = [i for i in issues if subject_lower in (i.get('subject', '') or '').lower()]
         
         # Determine which issues are in closed statuses (they need journal enrichment)
         closed_statuses_list = closed_statuses_list or AnalyticsEngine.DEFAULT_CLOSED_STATUSES
@@ -79,12 +91,17 @@ async def get_analytics(
         metrics = AnalyticsEngine.calculate_metrics(
             closed_issues_for_enrich, 
             closed_statuses=closed_statuses_list,
-            statuses_map=statuses_map
+            statuses_map=statuses_map,
+            tracked_statuses=tracked_statuses_list
         )
         
-        # Build issues summary
+        # Build issues summary with per-issue status times
         redmine_url = sessions[session_id]['redmine_url']
-        issues_summary = AnalyticsEngine.build_issues_summary(closed_issues_for_enrich, redmine_url)
+        issues_summary = AnalyticsEngine.build_issues_summary(
+            closed_issues_for_enrich, redmine_url,
+            statuses_map=statuses_map,
+            tracked_statuses=tracked_statuses_list
+        )
         
         return AnalyticsMetrics(
             total_issues=metrics['total_issues'],
@@ -222,7 +239,8 @@ async def get_analytics_by_assignee(
     project_id: int = Query(...),
     date_from: str = Query(None),
     date_to: str = Query(None),
-    closed_statuses: str = Query(None)
+    closed_statuses: str = Query(None),
+    subject: str = Query(None)
 ):
     """Get analytics grouped by assignees"""
     if session_id not in sessions:
@@ -246,6 +264,11 @@ async def get_analytics_by_assignee(
         
         # Filter to only closed issues
         issues = [i for i in issues if i.get('status', {}).get('name') in closed_statuses_set]
+        
+        # Filter by subject substring (case-insensitive)
+        if subject:
+            subject_lower = subject.strip().lower()
+            issues = [i for i in issues if subject_lower in (i.get('subject', '') or '').lower()]
         
         # Group by assignee and calculate metrics
         metrics_by_assignee = AnalyticsEngine.group_by_assignee(issues)

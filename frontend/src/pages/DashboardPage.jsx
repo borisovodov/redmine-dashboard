@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Navbar, NavbarBrand, NavbarContent, NavbarItem,
   Button, Card, CardHeader, CardBody, Select, SelectItem,
-  DatePicker, Checkbox, Alert, Chip
+  DatePicker, Alert, Chip, Input
 } from '@heroui/react'
 import { parseDate, getLocalTimeZone, today } from '@internationalized/date'
 import api from '@/services/api'
@@ -29,7 +29,6 @@ export default function DashboardPage() {
   const [selectedAssignees, setSelectedAssignees] = useState(new Set([]))
   const [selectedIssueTypes, setSelectedIssueTypes] = useState(new Set([]))
   const [selectedCategories, setSelectedCategories] = useState(new Set([]))
-  const [groupByAssignee, setGroupByAssignee] = useState(false)
   const [availablePriorities, setAvailablePriorities] = useState([])
   const [availableAssignees, setAvailableAssignees] = useState([])
   const [availableIssueTypes, setAvailableIssueTypes] = useState([])
@@ -38,8 +37,11 @@ export default function DashboardPage() {
   // Default closed status names — mapped to IDs after statuses load
   const DEFAULT_CLOSED_NAMES = ['Closed', 'Done', 'Rejected', 'Resolved']
   const [selectedClosedStatuses, setSelectedClosedStatuses] = useState(new Set([]))
+  const [selectedTrackedStatuses, setSelectedTrackedStatuses] = useState(new Set([]))
+  const [subjectFilter, setSubjectFilter] = useState('')
   const [metrics, setMetrics] = useState(null)
   const [issues, setIssues] = useState([])
+  const [selectedIssueIds, setSelectedIssueIds] = useState(new Set([]))
   const [loading, setLoading] = useState(false)
   const [loadingProjects, setLoadingProjects] = useState(false)
   const [error, setError] = useState(null)
@@ -73,6 +75,7 @@ export default function DashboardPage() {
     setSelectedIssueTypes(new Set([]))
     setSelectedCategories(new Set([]))
     setSelectedClosedStatuses(new Set([]))
+    setSelectedTrackedStatuses(new Set([]))
 
     if (!projectId) return
 
@@ -98,6 +101,13 @@ export default function DashboardPage() {
           .map(s => String(s.id))
       )
       setSelectedClosedStatuses(defaultIds)
+      // Tracked statuses default: all EXCEPT default closed names
+      const trackedIds = new Set(
+        statuses
+          .filter(s => !DEFAULT_CLOSED_NAMES.includes(s.name))
+          .map(s => String(s.id))
+      )
+      setSelectedTrackedStatuses(trackedIds)
     } catch {
       setError('Не удалось загрузить фильтры')
     }
@@ -124,6 +134,12 @@ export default function DashboardPage() {
     return Array.from(selectedClosedStatuses).map(id => idToName[id] || id)
   }
 
+  const trackedStatusNames = () => {
+    const idToName = {}
+    availableStatuses.forEach(s => { idToName[String(s.id)] = s.name })
+    return Array.from(selectedTrackedStatuses).map(id => idToName[id] || id)
+  }
+
   const applyFilters = async () => {
     if (!selectedProject) {
       setError('Выберите проект')
@@ -134,42 +150,22 @@ export default function DashboardPage() {
     setError(null)
 
     try {
-      if (groupByAssignee) {
-        const response = await api.get('/analytics/by_assignee', {
-          params: {
-            project_id: selectedProject,
-            date_from: toDateString(dateFrom) || undefined,
-            date_to: toDateString(dateTo) || undefined,
-            closed_statuses: closedStatusNames().join(',') || undefined
-          }
-        })
-        const byAssignee = response.data.by_assignee
-        const entries = Object.entries(byAssignee || {})
-        setMetrics({
-          distribution_data: {},
-          status_time_data: {},
-          by_assignee: byAssignee,
-          total_issues: entries.reduce((sum, [, a]) => sum + (a.total_issues || 0), 0),
-          average_close_time_hours: entries.length > 0
-            ? entries.reduce((sum, [, a]) => sum + (a.average_close_time_hours || 0), 0) / entries.length
-            : 0
-        })
-        setIssues(response.data.issues || [])
-      } else {
-        const params = new URLSearchParams({
-          project_id: selectedProject,
-          date_from: toDateString(dateFrom) || '',
-          date_to: toDateString(dateTo) || '',
-          priorities: Array.from(selectedPriorities).join(',') || '',
-          assignees: Array.from(selectedAssignees).join(',') || '',
-          issue_types: Array.from(selectedIssueTypes).join(',') || '',
-          categories: Array.from(selectedCategories).join(',') || '',
-          closed_statuses: closedStatusNames().join(',') || ''
-        })
-        const response = await api.post(`/analytics?${params.toString()}`)
-        setMetrics(response.data)
-        setIssues(response.data.issues || [])
-      }
+      const params = new URLSearchParams({
+        project_id: selectedProject,
+        date_from: toDateString(dateFrom) || '',
+        date_to: toDateString(dateTo) || '',
+        priorities: Array.from(selectedPriorities).join(',') || '',
+        assignees: Array.from(selectedAssignees).join(',') || '',
+        issue_types: Array.from(selectedIssueTypes).join(',') || '',
+        categories: Array.from(selectedCategories).join(',') || '',
+        closed_statuses: closedStatusNames().join(',') || '',
+        tracked_statuses: trackedStatusNames().join(',') || '',
+        subject: subjectFilter.trim() || ''
+      })
+      const response = await api.post(`/analytics?${params.toString()}`)
+      setMetrics(response.data)
+      setIssues(response.data.issues || [])
+      setSelectedIssueIds(new Set([]))
     } catch (err) {
       setError(err.response?.data?.detail || 'Не удалось загрузить аналитику')
     } finally {
@@ -187,6 +183,39 @@ export default function DashboardPage() {
 
   const toSelectItems = (items) =>
     (items || []).map((item) => ({ key: String(item.id), label: item.name }))
+
+  // Compute status time chart data: if issues are selected, show only their aggregate
+  // HeroUI Table returns "all" string when «select all» is clicked — normalize to a Set
+  const normalizedSelection = useMemo(() => {
+    if (selectedIssueIds === 'all') {
+      return new Set(issues.map(i => String(i.id)))
+    }
+    if (selectedIssueIds instanceof Set) {
+      return selectedIssueIds
+    }
+    return new Set([])
+  }, [selectedIssueIds, issues])
+
+  const statusTimeChartData = useMemo(() => {
+    if (!metrics?.status_time_data) return {}
+    if (normalizedSelection.size === 0) {
+      return metrics.status_time_data
+    }
+    // Sum status_times for selected issues only
+    const filtered = {}
+    for (const issue of issues) {
+      if (normalizedSelection.has(String(issue.id)) && issue.status_times) {
+        for (const [status, hours] of Object.entries(issue.status_times)) {
+          filtered[status] = (filtered[status] || 0) + hours
+        }
+      }
+    }
+    // Round
+    for (const k of Object.keys(filtered)) {
+      filtered[k] = Math.round(filtered[k] * 100) / 100
+    }
+    return filtered
+  }, [metrics, issues, normalizedSelection])
 
   return (
     <div className="min-h-screen bg-background">
@@ -223,7 +252,7 @@ export default function DashboardPage() {
             <h2 className="text-xl font-semibold">Фильтры</h2>
           </CardHeader>
           <CardBody className="gap-5 px-5 pb-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               <Select
                 label="Проект"
                 placeholder="Выберите проект"
@@ -240,7 +269,7 @@ export default function DashboardPage() {
               </Select>
 
               <DatePicker
-                label="Дата с"
+                label="Дата закрытия с"
                 variant="bordered"
                 color="primary"
                 labelPlacement="outside"
@@ -251,13 +280,24 @@ export default function DashboardPage() {
               />
 
               <DatePicker
-                label="Дата по"
+                label="Дата закрытия по"
                 variant="bordered"
                 color="primary"
                 labelPlacement="outside"
                 value={dateTo}
                 onChange={(val) => { setDateTo(val); onFilterChange() }}
                 showMonthAndYearPickers
+                classNames={{ inputWrapper: 'h-12' }}
+              />
+
+              <Input
+                label="Поиск по названию"
+                placeholder="Часть названия..."
+                variant="bordered"
+                color="primary"
+                labelPlacement="outside"
+                value={subjectFilter}
+                onValueChange={(val) => { setSubjectFilter(val); onFilterChange() }}
                 classNames={{ inputWrapper: 'h-12' }}
               />
 
@@ -387,23 +427,44 @@ export default function DashboardPage() {
                 {(item) => <SelectItem key={item.key}>{item.label}</SelectItem>}
               </Select>
 
+              <Select
+                label="Отслеживаемые статусы"
+                placeholder="Выберите статусы"
+                variant="bordered"
+                color="warning"
+                labelPlacement="outside"
+                selectionMode="multiple"
+                items={toSelectItems(availableStatuses)}
+                selectedKeys={selectedTrackedStatuses}
+                onSelectionChange={(keys) => { setSelectedTrackedStatuses(keys); onFilterChange() }}
+                classNames={{ trigger: 'min-h-12' }}
+                renderValue={(items) => (
+                  <div className="flex flex-wrap gap-1">
+                    {items.map((item) => (
+                      <Chip key={item.key} size="sm" variant="flat" color="warning">{item.data?.label || item.key}</Chip>
+                    ))}
+                  </div>
+                )}
+              >
+                {(item) => <SelectItem key={item.key}>{item.label}</SelectItem>}
+              </Select>
+
               <div className="flex items-center h-full pt-6">
-                <Checkbox
-                  isSelected={groupByAssignee}
-                  onValueChange={(val) => { setGroupByAssignee(val); onFilterChange() }}
-                  color="primary"
-                  radius="sm"
-                  size="md"
-                >
-                  <span className="text-sm">Группировать по исполнителям</span>
-                </Checkbox>
               </div>
             </div>
           </CardBody>
         </Card>
 
+        {issues.length > 0 && !loading && (
+          <IssuesTable
+            issues={issues}
+            selectedKeys={selectedIssueIds}
+            onSelectionChange={setSelectedIssueIds}
+          />
+        )}
+
         {metrics && !loading && (
-          <MetricsDisplay metrics={metrics} groupByAssignee={groupByAssignee} />
+          <MetricsDisplay metrics={metrics} />
         )}
 
         {metrics && !loading && (
@@ -419,18 +480,24 @@ export default function DashboardPage() {
 
             <Card shadow="sm" radius="lg">
               <CardHeader className="pb-0 pt-4 px-5">
-                <h3 className="text-lg font-semibold">Время в статусах — суммарно по всем задачам (часы)</h3>
+                <h3 className="text-lg font-semibold">
+                  Время в статусах — суммарно
+                  {normalizedSelection.size > 0
+                    ? ` по ${normalizedSelection.size} выбранным задачам`
+                    : ' по всем задачам'}
+                  {' '}(часы)
+                </h3>
               </CardHeader>
               <CardBody className="px-5 pb-5">
-                <p className="text-xs text-gray-500 mb-2">Исторический срез по закрытым задачам: сколько суммарно часов каждая задача провела в статусах до закрытия</p>
-                <StatusTimeChart data={metrics.status_time_data} />
+                <p className="text-xs text-gray-500 mb-2">
+                  {normalizedSelection.size > 0
+                    ? `Данные только для ${normalizedSelection.size} выделенных задач`
+                    : 'Исторический срез по закрытым задачам: сколько часов каждая задача провела в статусах до закрытия'}
+                </p>
+                <StatusTimeChart data={statusTimeChartData} />
               </CardBody>
             </Card>
           </div>
-        )}
-
-        {issues.length > 0 && !loading && (
-          <IssuesTable issues={issues} />
         )}
 
         {!loading && !metrics && selectedProject && (

@@ -1,55 +1,49 @@
-import { Bar } from 'react-chartjs-2'
 import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend
-} from 'chart.js'
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
+} from 'recharts'
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
+const LABELS = [
+  { key: '1-day', label: '1 день' },
+  { key: '2-3-days', label: '2-3 дня' },
+  { key: '4-7-days', label: '4-7 дней' },
+  { key: '8-14-days', label: '8-14 дней' },
+  { key: '15-30-days', label: '15-30 дней' },
+  { key: '30+-days', label: '30+ дней' },
+]
+
+const BAR_COLOR = '#1976D2'
+
+function CustomTooltip({ active, payload }) {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm">
+        <p className="font-medium text-gray-700">{payload[0].payload.label}</p>
+        <p className="text-blue-600 font-semibold">{payload[0].value} задач</p>
+      </div>
+    )
+  }
+  return null
+}
 
 export default function ClosureTimeDistributionChart({ data }) {
-  const chartData = {
-    labels: ['1 день', '2-3 дня', '4-7 дней', '8-14 дней', '15-30 дней', '30+ дней'],
-    datasets: [
-      {
-        label: 'Количество задач',
-        data: [
-          data['1-day'] || 0,
-          data['2-3-days'] || 0,
-          data['4-7-days'] || 0,
-          data['8-14-days'] || 0,
-          data['15-30-days'] || 0,
-          data['30+-days'] || 0
-        ],
-        backgroundColor: '#1976D2',
-        borderColor: '#1565C0',
-        borderWidth: 1
-      }
-    ]
-  }
+  const chartData = LABELS.map(({ key, label }) => ({
+    label,
+    count: data[key] || 0,
+  }))
 
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: true,
-    plugins: {
-      legend: {
-        display: true,
-        position: 'top'
-      }
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-        ticks: {
-          stepSize: 1
-        }
-      }
-    }
-  }
-
-  return <Bar data={chartData} options={chartOptions} />
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <BarChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+        <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+        <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+        <Tooltip content={<CustomTooltip />} />
+        <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+          {chartData.map((_, index) => (
+            <Cell key={index} fill={BAR_COLOR} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  )
 }
