@@ -10,6 +10,7 @@ import api from '@/services/api'
 import MetricsDisplay from '@/components/MetricsDisplay'
 import ClosureTimeDistributionChart from '@/components/ClosureTimeDistributionChart'
 import StatusTimeChart from '@/components/StatusTimeChart'
+import IssuesTable from '@/components/IssuesTable'
 
 export default function DashboardPage() {
   const navigate = useNavigate()
@@ -34,6 +35,7 @@ export default function DashboardPage() {
   const [availableIssueTypes, setAvailableIssueTypes] = useState([])
   const [availableCategories, setAvailableCategories] = useState([])
   const [metrics, setMetrics] = useState(null)
+  const [issues, setIssues] = useState([])
   const [loading, setLoading] = useState(false)
   const [loadingProjects, setLoadingProjects] = useState(false)
   const [error, setError] = useState(null)
@@ -57,6 +59,7 @@ export default function DashboardPage() {
     const projectId = Array.from(keys)[0]
     setSelectedProject(projectId)
     setMetrics(null)
+    setIssues([])
     setAvailablePriorities([])
     setAvailableAssignees([])
     setAvailableIssueTypes([])
@@ -127,6 +130,7 @@ export default function DashboardPage() {
             ? entries.reduce((sum, [, a]) => sum + (a.average_close_time_hours || 0), 0) / entries.length
             : 0
         })
+        setIssues(response.data.issues || [])
       } else {
         const params = new URLSearchParams({
           project_id: selectedProject,
@@ -139,6 +143,7 @@ export default function DashboardPage() {
         })
         const response = await api.post(`/analytics?${params.toString()}`)
         setMetrics(response.data)
+        setIssues(response.data.issues || [])
       }
     } catch (err) {
       setError(err.response?.data?.detail || 'Не удалось загрузить аналитику')
@@ -376,6 +381,10 @@ export default function DashboardPage() {
               </CardBody>
             </Card>
           </div>
+        )}
+
+        {issues.length > 0 && !loading && (
+          <IssuesTable issues={issues} />
         )}
 
         {!loading && !metrics && selectedProject && (

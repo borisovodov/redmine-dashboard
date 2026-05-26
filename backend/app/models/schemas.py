@@ -46,6 +46,18 @@ class AnalyticsRequest(BaseModel):
     categories: Optional[List[int]] = None
 
 
+class IssueSummary(BaseModel):
+    """Summary of a single issue for the issues table"""
+    id: int
+    subject: str
+    status: str
+    close_time_hours: Optional[float] = None
+    url: str
+    tracker: str = ""
+    priority: str = ""
+    assigned_to: str = ""
+
+
 class AnalyticsMetrics(BaseModel):
     """Analytics metrics model"""
     total_issues: int
@@ -53,6 +65,7 @@ class AnalyticsMetrics(BaseModel):
     median_close_time_hours: float
     distribution_data: dict
     status_time_data: dict
+    issues: List[IssueSummary] = []
 
 
 class ErrorResponse(BaseModel):

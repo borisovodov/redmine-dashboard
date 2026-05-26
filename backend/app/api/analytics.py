@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query
-from app.models.schemas import AnalyticsRequest, AnalyticsMetrics
+from app.models.schemas import AnalyticsRequest, AnalyticsMetrics, IssueSummary
 from app.services.redmine_client import RedmineClient
 from app.services.analytics_engine import AnalyticsEngine
 from app.api.auth import sessions
@@ -54,12 +54,17 @@ async def get_analytics(
         # Calculate metrics
         metrics = AnalyticsEngine.calculate_metrics(issues)
         
+        # Build issues summary
+        redmine_url = sessions[session_id]['redmine_url']
+        issues_summary = AnalyticsEngine.build_issues_summary(issues, redmine_url)
+        
         return AnalyticsMetrics(
             total_issues=metrics['total_issues'],
             average_close_time_hours=metrics['average_close_time_hours'],
             median_close_time_hours=metrics['median_close_time_hours'],
             distribution_data=metrics['distribution_data'],
-            status_time_data=metrics['status_time_data']
+            status_time_data=metrics['status_time_data'],
+            issues=[IssueSummary(**s) for s in issues_summary]
         )
     
     except Exception as e:
@@ -185,7 +190,14 @@ async def get_analytics_by_assignee(
         # Group by assignee and calculate metrics
         metrics_by_assignee = AnalyticsEngine.group_by_assignee(issues)
         
-        return {'by_assignee': metrics_by_assignee}
+        # Build issues summary
+        redmine_url = sessions[session_id]['redmine_url']
+        issues_summary = AnalyticsEngine.build_issues_summary(issues, redmine_url)
+        
+        return {
+            'by_assignee': metrics_by_assignee,
+            'issues': [IssueSummary(**s) for s in issues_summary]
+        }
     
     except Exception as e:
         logger.error(f"Error calculating assignee analytics: {str(e)}")

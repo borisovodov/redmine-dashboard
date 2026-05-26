@@ -201,6 +201,46 @@ class AnalyticsEngine:
         return filtered
     
     @staticmethod
+    def build_issues_summary(issues: List[Dict], redmine_url: str) -> List[Dict]:
+        """
+        Build a summary list of issues with close time and URL
+        
+        Args:
+            issues: List of Redmine issues
+            redmine_url: Base URL of the Redmine instance
+        
+        Returns:
+            List of issue summaries
+        """
+        summaries = []
+        
+        for issue in issues:
+            close_time_hours = None
+            created_on_str = issue.get('created_on')
+            closed_on_str = issue.get('closed_on')
+            
+            if created_on_str and closed_on_str:
+                try:
+                    created_on = datetime.fromisoformat(created_on_str.replace('Z', '+00:00'))
+                    closed_on = datetime.fromisoformat(closed_on_str.replace('Z', '+00:00'))
+                    close_time_hours = round((closed_on - created_on).total_seconds() / 3600, 2)
+                except Exception:
+                    pass
+            
+            summaries.append({
+                'id': issue['id'],
+                'subject': issue.get('subject', ''),
+                'status': issue.get('status', {}).get('name', ''),
+                'close_time_hours': close_time_hours,
+                'url': f"{redmine_url}/issues/{issue['id']}",
+                'tracker': issue.get('tracker', {}).get('name', ''),
+                'priority': issue.get('priority', {}).get('name', ''),
+                'assigned_to': issue.get('assigned_to', {}).get('name', '')
+            })
+        
+        return summaries
+
+    @staticmethod
     def group_by_assignee(issues: List[Dict]) -> Dict:
         """Group metrics by assignee"""
         assignees = {}
