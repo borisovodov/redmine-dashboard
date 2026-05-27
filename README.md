@@ -167,7 +167,7 @@ docker compose down
 ## Структура проекта
 
 ```
-redmine-analytics/
+redmine-dashboard/
 ├── docker-compose.yml
 ├── README.md
 ├── AGENTS.md

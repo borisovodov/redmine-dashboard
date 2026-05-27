@@ -74,7 +74,7 @@ cd frontend && npm install && npm run dev
 ## File Structure
 
 ```
-redmine-analytics/
+redmine-dashboard/
 ├── docker-compose.yml          # Production: backend + frontend (nginx), context per subfolder
 ├── .dockerignore               # Root-level exclude for dev tooling (not used by builds)
 ├── README.md
