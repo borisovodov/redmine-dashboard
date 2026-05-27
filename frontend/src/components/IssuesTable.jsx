@@ -41,7 +41,7 @@ export default function IssuesTable({ issues, selectedKeys, onSelectionChange, t
       let aVal = a[column]
       let bVal = b[column]
 
-      if (column === 'close_time_hours' || column.startsWith('_st_')) {
+      if (column === 'close_time_hours' || column === 'return_count' || column.startsWith('_st_')) {
         aVal = aVal ?? -1
         bVal = bVal ?? -1
       }
@@ -102,6 +102,7 @@ export default function IssuesTable({ issues, selectedKeys, onSelectionChange, t
             <TableColumn key="assigned_to" allowsSorting>Исполнитель</TableColumn>
             <TableColumn key="closed_on" allowsSorting>Дата закрытия</TableColumn>
             <TableColumn key="close_time_hours" allowsSorting>Время закрытия</TableColumn>
+            <TableColumn key="return_count" allowsSorting>Возвраты</TableColumn>
             {trackedStatusNames.map((name) => (
               <TableColumn key={`_st_${name}`} allowsSorting>{name}</TableColumn>
             ))}
@@ -161,6 +162,15 @@ export default function IssuesTable({ issues, selectedKeys, onSelectionChange, t
                     color={issue.close_time_hours ? (issue.close_time_hours <= 24 ? 'success' : issue.close_time_hours <= 72 ? 'warning' : 'danger') : 'default'}
                   >
                     {formatCloseTime(issue.close_time_hours)}
+                  </Chip>
+                </TableCell>
+                <TableCell>
+                  <Chip
+                    size="sm"
+                    variant="flat"
+                    color={issue.return_count ? (issue.return_count <= 1 ? 'success' : issue.return_count <= 3 ? 'warning' : 'danger') : 'default'}
+                  >
+                    {issue.return_count ?? 0}
                   </Chip>
                 </TableCell>
                 {trackedStatusNames.map((name) => (

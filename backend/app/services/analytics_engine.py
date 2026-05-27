@@ -50,21 +50,40 @@ class AnalyticsEngine:
             if issue.get('status', {}).get('name') in closed_statuses
         ]
         
+        # Compute per-issue status times (hours) — needed for tracked-status close time
+        per_issue_status_times = AnalyticsEngine._calculate_per_issue_status_times(
+            closed_issues, statuses_map
+        )
+        
+        # Build close_times_hours: if tracked_statuses is provided, sum only those
+        # statuses per issue; otherwise use calendar closed_on - created_on.
         close_times_hours = []
         
-        for issue in closed_issues:
-            try:
-                created_on = datetime.fromisoformat(issue['created_on'].replace('Z', '+00:00'))
-                closed_on = issue.get('closed_on')
-                
-                if closed_on:
-                    closed_on = datetime.fromisoformat(closed_on.replace('Z', '+00:00'))
-                    diff = closed_on - created_on
-                    hours = diff.total_seconds() / 3600
-                    close_times_hours.append(hours)
-            except Exception as e:
-                logger.warning(f"Error calculating close time for issue {issue.get('id')}: {str(e)}")
-                continue
+        if tracked_statuses is not None:
+            tracked_set = set(tracked_statuses)
+            for issue in closed_issues:
+                issue_times = per_issue_status_times.get(issue['id'], {})
+                # Sum hours spent in tracked statuses for this issue
+                tracked_hours = sum(
+                    hours for name, hours in issue_times.items()
+                    if name in tracked_set
+                )
+                if tracked_hours > 0:
+                    close_times_hours.append(tracked_hours)
+        else:
+            for issue in closed_issues:
+                try:
+                    created_on = datetime.fromisoformat(issue['created_on'].replace('Z', '+00:00'))
+                    closed_on = issue.get('closed_on')
+                    
+                    if closed_on:
+                        closed_on = datetime.fromisoformat(closed_on.replace('Z', '+00:00'))
+                        diff = closed_on - created_on
+                        hours = diff.total_seconds() / 3600
+                        close_times_hours.append(hours)
+                except Exception as e:
+                    logger.warning(f"Error calculating close time for issue {issue.get('id')}: {str(e)}")
+                    continue
         
         # Calculate distribution (by days)
         distribution = AnalyticsEngine._calculate_distribution(close_times_hours)
@@ -89,11 +108,18 @@ class AnalyticsEngine:
         avg_hours = sum(close_times_hours) / len(close_times_hours) if close_times_hours else 0
         median_hours = statistics.median(close_times_hours) if close_times_hours else 0
         
+        # Calculate return counts (transitions into "In Progress")
+        return_counts = AnalyticsEngine._calculate_return_counts(
+            closed_issues, statuses_map
+        )
+        avg_returns = sum(return_counts.values()) / len(return_counts) if return_counts else 0.0
+        
         return {
             'total_issues': len(closed_issues),
             'closed_issues': len(closed_issues),
             'average_close_time_hours': round(avg_hours, 2),
             'median_close_time_hours': round(median_hours, 2),
+            'average_returns': round(avg_returns, 2),
             'distribution_data': distribution,
             'status_time_data': status_times
         }
@@ -375,6 +401,54 @@ class AnalyticsEngine:
         return filtered
     
     @staticmethod
+    def _calculate_return_counts(issues: List[Dict],
+                                 statuses_map: Optional[Dict[int, str]] = None) -> Dict[int, int]:
+        """
+        Count how many times each issue transitioned INTO "In Progress" status.
+        
+        Returns:
+            Dict of {issue_id: return_count}
+        """
+        # Find the "In Progress" status_id from the map
+        in_progress_id = None
+        if statuses_map:
+            for sid, name in statuses_map.items():
+                if name.lower() == 'in progress':
+                    in_progress_id = sid
+                    break
+        
+        result: Dict[int, int] = {}
+        
+        for issue in issues:
+            issue_id = issue['id']
+            count = 0
+            journals = issue.get('journals', [])
+            
+            for journal in journals:
+                for detail in journal.get('details', []):
+                    if detail.get('name') == 'status_id':
+                        new_value = detail.get('new_value')
+                        if new_value is not None:
+                            try:
+                                new_id = int(new_value)
+                                # If we have the exact "In Progress" ID, match by ID
+                                if in_progress_id is not None and new_id == in_progress_id:
+                                    count += 1
+                                elif in_progress_id is None:
+                                    # Fallback: resolve by name
+                                    name = AnalyticsEngine._resolve_status_name(
+                                        {'id': new_id}, statuses_map
+                                    )
+                                    if name.lower() == 'in progress':
+                                        count += 1
+                            except (ValueError, TypeError):
+                                pass
+            
+            result[issue_id] = count
+        
+        return result
+    
+    @staticmethod
     def build_issues_summary(issues: List[Dict], redmine_url: str,
                              statuses_map: Optional[Dict[int, str]] = None,
                              tracked_statuses: Optional[List[str]] = None) -> List[Dict]:
@@ -396,6 +470,11 @@ class AnalyticsEngine:
             issues, statuses_map
         )
         
+        # Compute return counts (transitions into "In Progress")
+        return_counts = AnalyticsEngine._calculate_return_counts(
+            issues, statuses_map
+        )
+        
         # Determine which statuses to keep in per-issue output
         if tracked_statuses is not None:
             keep_set = set(tracked_statuses)
@@ -405,20 +484,33 @@ class AnalyticsEngine:
         summaries = []
         
         for issue in issues:
-            close_time_hours = None
-            created_on_str = issue.get('created_on')
+            # Get per-issue status times in hours
+            issue_times = per_issue_times.get(issue['id'], {})
+            
             closed_on_str = issue.get('closed_on')
             
-            if created_on_str and closed_on_str:
-                try:
-                    created_on = datetime.fromisoformat(created_on_str.replace('Z', '+00:00'))
-                    closed_on = datetime.fromisoformat(closed_on_str.replace('Z', '+00:00'))
-                    close_time_hours = round((closed_on - created_on).total_seconds() / 3600, 2)
-                except Exception:
-                    pass
+            # Compute close_time_hours: if tracked_statuses provided, sum only those;
+            # otherwise use calendar closed_on - created_on.
+            close_time_hours = None
+            if keep_set is not None:
+                # Sum hours spent in tracked statuses
+                tracked_hours = sum(
+                    hours for name, hours in issue_times.items()
+                    if name in keep_set
+                )
+                if tracked_hours > 0:
+                    close_time_hours = round(tracked_hours, 2)
+            else:
+                created_on_str = issue.get('created_on')
+                if created_on_str and closed_on_str:
+                    try:
+                        created_on = datetime.fromisoformat(created_on_str.replace('Z', '+00:00'))
+                        closed_on = datetime.fromisoformat(closed_on_str.replace('Z', '+00:00'))
+                        close_time_hours = round((closed_on - created_on).total_seconds() / 3600, 2)
+                    except Exception:
+                        pass
             
-            # Get per-issue status times, keep only tracked statuses, convert to days
-            issue_times = per_issue_times.get(issue['id'], {})
+            # Build per-issue status times for output, convert to days
             if keep_set is not None:
                 filtered_times = {k: round(v / 24, 2) for k, v in issue_times.items() if k in keep_set}
             else:
@@ -436,7 +528,8 @@ class AnalyticsEngine:
                 'tracker': issue.get('tracker', {}).get('name', ''),
                 'priority': issue.get('priority', {}).get('name', ''),
                 'assigned_to': issue.get('assigned_to', {}).get('name', ''),
-                'status_times': filtered_times
+                'status_times': filtered_times,
+                'return_count': return_counts.get(issue['id'], 0)
             })
         
         return summaries

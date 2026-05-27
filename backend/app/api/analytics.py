@@ -107,6 +107,7 @@ async def get_analytics(
             total_issues=metrics['total_issues'],
             average_close_time_hours=metrics['average_close_time_hours'],
             median_close_time_hours=metrics['median_close_time_hours'],
+            average_returns=metrics['average_returns'],
             distribution_data=metrics['distribution_data'],
             status_time_data=metrics['status_time_data'],
             issues=[IssueSummary(**s) for s in issues_summary]

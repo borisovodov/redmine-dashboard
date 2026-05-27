@@ -248,7 +248,7 @@ export default function DashboardPage() {
       .filter(h => h !== null && h !== undefined)
 
     if (closeTimes.length === 0) {
-      return { ...metrics, total_issues: 0, average_close_time_hours: 0, median_close_time_hours: 0, distribution_data: {} }
+      return { ...metrics, total_issues: 0, average_close_time_hours: 0, median_close_time_hours: 0, average_returns: 0, distribution_data: {} }
     }
 
     // Average and median
@@ -259,6 +259,13 @@ export default function DashboardPage() {
     const median = sorted.length % 2 === 0
       ? (sorted[mid - 1] + sorted[mid]) / 2
       : sorted[mid]
+
+    // Average returns for selected issues
+    const returnCounts = selectedIssues
+      .map(i => i.return_count ?? 0)
+    const avgReturns = returnCounts.length > 0
+      ? returnCounts.reduce((a, b) => a + b, 0) / returnCounts.length
+      : 0
 
     // Per-day distribution (same logic as backend)
     const dist = {}
@@ -273,6 +280,7 @@ export default function DashboardPage() {
       total_issues: closeTimes.length,
       average_close_time_hours: Math.round(avg * 100) / 100,
       median_close_time_hours: Math.round(median * 100) / 100,
+      average_returns: Math.round(avgReturns * 10) / 10,
       distribution_data: dist,
     }
   }, [metrics, issues, normalizedSelection])

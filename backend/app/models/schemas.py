@@ -58,6 +58,7 @@ class IssueSummary(BaseModel):
     priority: str = ""
     assigned_to: str = ""
     status_times: dict = {}
+    return_count: int = 0
 
 
 class AnalyticsMetrics(BaseModel):
@@ -65,6 +66,7 @@ class AnalyticsMetrics(BaseModel):
     total_issues: int
     average_close_time_hours: float
     median_close_time_hours: float
+    average_returns: float = 0.0
     distribution_data: dict
     status_time_data: dict
     issues: List[IssueSummary] = []

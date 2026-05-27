@@ -11,7 +11,7 @@ export default function MetricsDisplay({ metrics, groupByAssignee }) {
   return (
     <div>
       {/* Main Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <Card shadow="sm" radius="lg">
           <CardBody className="text-center py-6">
             <div className="flex justify-center mb-3">
@@ -82,6 +82,23 @@ export default function MetricsDisplay({ metrics, groupByAssignee }) {
                 const totalH = (metrics.average_close_time_hours || 0) * (metrics.total_issues || 0)
                 return formatTime(totalH)
               })()}
+            </p>
+          </CardBody>
+        </Card>
+
+        <Card shadow="sm" radius="lg">
+          <CardBody className="text-center py-6">
+            <div className="flex justify-center mb-3">
+              <div className="p-3 rounded-full bg-danger/10">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-danger">
+                  <polyline points="23 4 23 10 17 10" />
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                </svg>
+              </div>
+            </div>
+            <p className="text-sm font-medium text-default-500">Среднее возвратов на задачу</p>
+            <p className="text-3xl font-bold text-danger mt-1">
+              {metrics.average_returns != null ? metrics.average_returns.toFixed(1) : '—'}
             </p>
           </CardBody>
         </Card>
