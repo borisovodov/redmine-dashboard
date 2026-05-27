@@ -1,15 +1,17 @@
 # Redmine Analytics Dashboard
 
-Дашборд аналитики для системы управления задачами Redmine. Отображает метрики времени закрытия задач, переходов по статусам и аналитику производительности.
+Дашборд аналитики для системы управления задачами Redmine. Отображает метрики времени закрытия задач, переходов по статусам, распределение возвратов и аналитику производительности.
 
 ## Возможности
 
 - 🔐 Безопасная аутентификация через API-ключ Redmine
 - 📊 Аналитика и метрики в реальном времени
-- 📈 Интерактивные графики и визуализации
-- 🎯 Фильтрация по проекту, приоритету, исполнителю и типу задачи
+- 📈 Интерактивные графики и визуализации (Recharts)
+- 🎯 Фильтрация по проекту, приоритету, исполнителю, типу задачи, категории и названию
+- 🔄 Настраиваемые «закрытые» и «отслеживаемые» статусы — время закрытия считается только по отслеживаемым
+- 🔁 Метрика «Возвраты» — среднее количество переходов в «In Progress» на задачу
+- 📋 Таблица задач с сортировкой, пагинацией и ссылками на Redmine
 - 👥 Группировка аналитики по исполнителям
-- 🚀 Поддержка нескольких пользователей
 - 🐳 Поддержка Docker для простого развёртывания
 
 ## Технологический стек
@@ -21,9 +23,10 @@
 - **Requests** — HTTP-клиент
 
 ### Фронтенд
-- **Vue.js 3** — JavaScript-фреймворк
-- **Vuetify** — компоненты Material Design
-- **Chart.js** — графики и визуализации
+- **React 18** — JavaScript-фреймворк
+- **HeroUI** — компоненты UI
+- **Tailwind CSS** — стилизация
+- **Recharts** — графики и визуализации
 - **Vite** — сборочный инструмент
 
 ## Быстрый старт
@@ -66,20 +69,15 @@ npm run dev
 
 ## Конфигурация
 
-### Бэкенд (.env)
+### Бэкенд
 
-```
-DEBUG=true
-HOST=0.0.0.0
-PORT=8000
-CORS_ORIGINS=["http://localhost:3000", "http://localhost:5173"]
-SESSION_TIMEOUT_MINUTES=60
-```
+Переменные окружения не требуются — приложение работает «из коробки». CORS origins настроены внутри `main.py`.
 
 ### Фронтенд (.env)
 
 ```
-VITE_API_URL=http://localhost:8000
+VITE_API_URL=http://localhost:8000   # для разработки
+# В production (Docker): VITE_API_URL=/api (задаётся в Dockerfile)
 ```
 
 ## Использование
@@ -88,13 +86,18 @@ VITE_API_URL=http://localhost:8000
 2. **Выбор проекта**: выберите проект для анализа
 3. **Настройка фильтров**:
    - Диапазон дат (с/по)
-   - Приоритеты
-   - Исполнители
-   - Типы задач
+   - Приоритеты, исполнители, типы задач, категории
+   - Поиск по названию задачи
+   - Закрытые статусы (какие считать закрытыми)
+   - Отслеживаемые статусы (по каким считать время закрытия)
 4. **Просмотр аналитики**:
    - Среднее и медианное время закрытия
+   - Среднее количество возвратов на задачу
+   - Общее время закрытия и количество задач
    - График распределения времени закрытия
-   - Время в каждом статусе
+   - Время в каждом статусе (круговая диаграмма)
+   - Пометричные карточки для каждого отслеживаемого статуса
+   - Таблица задач с сортировкой и выделением строк
    - Метрики с группировкой по исполнителям (опционально)
 
 ## API-эндпоинты
@@ -107,31 +110,24 @@ VITE_API_URL=http://localhost:8000
 - `GET /projects` — получить список проектов
 
 ### Аналитика
-- `POST /analytics` — получить метрики аналитики
-- `GET /analytics/filters/priorities` — получить доступные приоритеты
-- `GET /analytics/filters/issue_types` — получить доступные типы задач
-- `GET /analytics/filters/assignees` — получить исполнителей проекта
-- `GET /analytics/by_assignee` — получить аналитику с группировкой по исполнителям
+- `POST /analytics` — получить метрики аналитики (с фильтрами)
+- `GET /analytics/filters/priorities` — доступные приоритеты
+- `GET /analytics/filters/issue_types` — доступные типы задач
+- `GET /analytics/filters/assignees` — исполнители проекта
+- `GET /analytics/filters/categories` — категории задач проекта
+- `GET /analytics/filters/statuses` — все статусы задач
+- `GET /analytics/by_assignee` — аналитика с группировкой по исполнителям
 
 ## Сборка для production
 
-### Бэкенд
 ```bash
-# Сборка Docker-образа
-docker build -f Dockerfile.backend -t redmine-analytics-backend .
+# Docker Compose (рекомендуется)
+docker compose up -d --build
+# Фронтенд: http://localhost:3000
+# Бэкенд API: http://localhost:8000
 
-# Запуск
-docker run -p 8000:8000 redmine-analytics-backend
-```
-
-### Фронтенд
-```bash
-cd frontend
-
-# Сборка статических файлов
-npm run build
-
-# Результат в директории dist/
+# Остановка
+docker compose down
 ```
 
 ## Обработка ошибок
@@ -145,20 +141,11 @@ npm run build
 
 ## Известные ограничения
 
-- Нет постоянного хранилища данных (только сессионное)
+- Нет постоянного хранилища данных (только сессионное, в памяти)
 - Зависимость от ограничений частоты запросов Redmine API
 - Данные запрашиваются при каждом обращении (без кеширования)
 - Развёртывание в одном экземпляре (без масштабирования)
-
-## Планы по развитию
-
-- [ ] Экспорт в CSV/PDF
-- [ ] Синхронизация данных в реальном времени через WebSockets
-- [ ] Сравнение периодов
-- [ ] Поддержка пользовательских полей
-- [ ] Сохранение отчётов и планирование
-- [ ] Интеграция LDAP/SSO
-- [ ] Слой кеширования (Redis)
+- При большом количестве задач обогащение журналами (journals) занимает время
 
 ## Устранение неполадок
 
@@ -173,31 +160,51 @@ npm run build
 - Очистите кеш браузера и перезагрузите страницу
 
 ### Ошибки CORS
-- Убедитесь, что `CORS_ORIGINS` в `.env` бэкенда содержит адрес вашего фронтенда
 - При использовании Docker проверьте, что nginx проксирует запросы `/api/` на бэкенд
 - В режиме разработки проверьте настройки прокси в `vite.config.js`
-- Check CORS_ORIGINS in backend .env
-- Ensure frontend URL is in CORS whitelist
-- Backend must be running on correct host/port
+- Убедитесь, что URL фронтенда добавлен в `origins` в `main.py`
 
-## Development
-
-### Project Structure
+## Структура проекта
 
 ```
 redmine-analytics/
+├── docker-compose.yml
+├── README.md
+├── AGENTS.md
 ├── backend/
-│   ├── app/
-│   │   ├── api/          # API routes
-│   │   ├── services/     # Business logic
-│   │   ├── models/       # Pydantic schemas
-│   │   └── main.py       # FastAPI app
-│   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── pages/        # Page components
-│   │   ├── components/   # Reusable components
-│   │   └── services/     # API client
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── app/
+│       ├── main.py
+│       ├── api/
+│       │   ├── auth.py
+│       │   ├── projects.py
+│       │   └── analytics.py
+│       ├── models/
+│       │   └── schemas.py
+│       └── services/
+│           ├── redmine_client.py
+│           └── analytics_engine.py
+└── frontend/
+    ├── Dockerfile
+    ├── package.json
+    ├── vite.config.js
+    ├── tailwind.config.js
+    ├── nginx.conf
+    └── src/
+        ├── main.jsx
+        ├── App.jsx
+        ├── services/
+        │   └── api.js
+        ├── pages/
+        │   ├── LoginPage.jsx
+        │   └── DashboardPage.jsx
+        └── components/
+            ├── MetricsDisplay.jsx
+            ├── ClosureTimeDistributionChart.jsx
+            ├── StatusTimeChart.jsx
+            └── IssuesTable.jsx
+```
 │   ├── index.html
 │   └── package.json
 └── docker-compose.yml

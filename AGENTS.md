@@ -25,7 +25,7 @@ Redmine instance (external, user-provided)
 2. Backend's `POST /auth/validate` tests credentials via Redmine `GET /users/current.json`, creates in-memory session (`sessions` dict in `auth.py`)
 3. Session ID stored in browser `localStorage`, sent as `?session_id=` query param on every subsequent request
 4. Dashboard fetches projects, filter options, issues, and analytics — all through the Redmine client using the session's API key
-5. Analytics calculated server-side: close time = `closed_on - created_on`, status times from journal history
+5. Analytics calculated server-side: close time = sum of time in tracked statuses (when tracked_statuses set), else `closed_on - created_on`; status times from journal history; return counts from "In Progress" transitions
 6. Issues table renders below charts with sortable columns, pagination, and clickable links to Redmine
 
 **Key constraint:** Sessions die when the backend container restarts (in-memory only, no Redis/DB).
@@ -98,7 +98,7 @@ redmine-analytics/
 │       └── services/
 │           ├── __init__.py
 │           ├── redmine_client.py    # RedmineClient: validate, get_projects, get_issues, get_priorities, get_trackers, get_project_members, get_categories
-│           └── analytics_engine.py  # AnalyticsEngine: calculate_metrics, filter_issues, group_by_assignee, build_issues_summary, _calculate_distribution, _calculate_status_times
+│           └── analytics_engine.py  # AnalyticsEngine: calculate_metrics, filter_issues, group_by_assignee, build_issues_summary, _calculate_distribution, _calculate_status_times, _calculate_per_issue_status_times, _calculate_return_counts
 │
 └── frontend/
     ├── Dockerfile              # Multi-stage: node:18-alpine build → nginx:alpine (context: ./frontend)
@@ -117,12 +117,12 @@ redmine-analytics/
         │   └── api.js           # Axios instance, VITE_API_URL base, session_id interceptor, 401 → /login redirect
         ├── pages/
         │   ├── LoginPage.jsx        # URL + API key form, POST /auth/validate, stores sessionId + redmineUrl + apiKey in localStorage
-│       └── DashboardPage.jsx    # Project selector, date range, filters (priorities/assignees/types/categories/closed+tracked statuses), subject search, metrics, charts, issues table
+        │   └── DashboardPage.jsx    # Project selector, date range, filters (priorities/assignees/types/categories/closed+tracked statuses), subject search, metrics, charts, issues table
         └── components/
-            ├── MetricsDisplay.jsx              # Avg/median/total close time + total issues cards (4 cards)
-        ├── ClosureTimeDistributionChart.jsx # Line chart: per-day close time distribution
-        ├── StatusTimeChart.jsx              # Donut chart: total days per status
-            └── IssuesTable.jsx                  # HeroUI Table: #, subject (link→Redmine), tracker, status, priority, assignee, close time. Sortable, paginated (15/page)
+            ├── MetricsDisplay.jsx              # Avg/median/total close time + total issues + avg returns (5 cards)
+            ├── ClosureTimeDistributionChart.jsx # Line chart: per-day close time distribution
+            ├── StatusTimeChart.jsx              # Donut chart: total days per status
+            └── IssuesTable.jsx                  # HeroUI Table: #, subject (link→Redmine), tracker, status, priority, assignee, close time, returns, tracked status columns. Sortable, paginated (15/page)
 ```
 
 ## API Endpoints
@@ -151,6 +151,7 @@ All session-authenticated endpoints require `?session_id=<uuid>` query param. Un
   "total_issues": 42,
   "average_close_time_hours": 12.5,
   "median_close_time_hours": 8.0,
+  "average_returns": 1.5,
   "distribution_data": { "1": 5, "2": 10, ... },
   "status_time_data": { "New": 5.2, "In Progress": 12.1, ... },
   "issues": [
@@ -164,7 +165,8 @@ All session-authenticated endpoints require `?session_id=<uuid>` query param. Un
       "tracker": "Bug",
       "priority": "High",
       "assigned_to": "John Doe",
-      "status_times": {"New": 2.0, "In Progress": 2.5}
+      "status_times": {"New": 2.0, "In Progress": 2.5},
+      "return_count": 1
     }
   ]
 }
@@ -192,12 +194,14 @@ All session-authenticated endpoints require `?session_id=<uuid>` query param. Un
 
 ### Analytics Engine
 - "Closed" statuses: user-configurable via UI multi-select. Defaults: `['Closed', 'Done', 'Rejected', 'Resolved']`. Only issues currently in these statuses are analyzed.
-- "Tracked" statuses: user-configurable multi-select — only these statuses appear in the status time chart. Defaults: all statuses EXCEPT the default closed ones.
+- "Tracked" statuses: user-configurable multi-select — only these statuses count towards close time and appear in the status time chart. Defaults: all statuses EXCEPT the default closed ones.
+- **Close time** = sum of time spent in tracked statuses (when `tracked_statuses` provided), else calendar `closed_on - created_on`.
+- **Return count** = number of times an issue transitioned INTO "In Progress" status. Counted from journal history. Average returns displayed as a metric card.
 - Status time calculation parses `journals` from Redmine issue history. **Critical**: Redmine list endpoint (`/issues.json`) does NOT return journals even with `include=journals` on some instances (e.g. RedmineUP). Must fetch each issue individually via `GET /issues/{id}.json?include=journals` using `RedmineClient.enrich_issues_with_journals()` — uses ThreadPoolExecutor (10 workers).
 - Distribution: per-day (not bucketed). `_calculate_distribution` returns `{"1": 5, "2": 3, ...}` — day number → count.
 - Status times are computed in hours internally, then converted to **days** (`/ 24`) before returning to frontend for consistency with other metrics.
-- Invariant for verification: sum of close times ≈ sum of status times (excluding closed-status time). Use this to validate correctness.
-- `build_issues_summary()` now includes per-issue `status_times: {status_name: days}` for frontend-side filtering when rows are selected.
+- Invariant for verification: sum of close times = sum of tracked status times (when tracked_statuses set). Use this to validate correctness.
+- `build_issues_summary()` includes per-issue `status_times: {status_name: days}`, `return_count`, and `close_time_hours`.
 - Pydantic `Project.key` maps to Redmine's `identifier` field (not `id`).
 
 ### Frontend Patterns
@@ -211,13 +215,14 @@ All session-authenticated endpoints require `?session_id=<uuid>` query param. Un
 ### Issues Table
 - HeroUI `Table` with `selectionMode="multiple"`, `allowsSorting` on all columns, `isStriped` for readability.
 - Pagination: 15 rows per page using HeroUI `Pagination` component in `bottomContent`.
-- Columns: #, Тема, Трекер, Статус, Приоритет, Исполнитель, Дата закрытия, Время закрытия.
+- Columns: #, Тема, Трекер, Статус, Приоритет, Исполнитель, Дата закрытия, Время закрытия, Возвраты, + tracked status columns.
 - Selecting rows filters all metrics and charts to selected issues (via `normalizedSelection` helper — handles `"all"` string from HeroUI).
 - Issue ID rendered as a HeroUI `Button` with `as="a"` linking to `issue.url` with `target="_blank"`.
 - Subject rendered as a plain `<a>` link to the same URL.
 - Status and close time shown as colored `Chip` components:
   - Status: green for closed statuses, yellow otherwise
   - Close time: green (≤24h), yellow (≤72h), red (>72h), gray (not closed)
+  - Returns: green (≤1), yellow (≤3), red (>3), gray (0)
 - Close date formatted as `DD.MM.YYYY` via `toLocaleDateString('ru-RU')`.
 
 ## Known Limitations
@@ -251,11 +256,11 @@ When dependencies change (`npm install`/`npm uninstall`), Vite dev server return
 ### Backend: always restart after code changes
 Uvicorn `--reload` usually picks up changes, but sometimes doesn't (especially after multiple rapid edits). Always run `lsof -ti:8000 | xargs kill -9` + restart after backend edits to be safe.
 
-### Invariant: close time sum ≈ status time sum
-Sum of `close_time_hours` for all issues should approximately equal the sum of all status times in the chart (excluding closed-status time). This invariant can be used to verify correctness of the status time calculation.
+### Invariant: close time sum = tracked status time sum
+Sum of `close_time_hours` for all issues exactly equals the sum of all tracked status times in the chart (when tracked_statuses set). Both are computed from the same per-issue status time data. This invariant can be used to verify correctness.
 
 ### Frontend metrics for selected rows
-All metrics (average, median, total, distribution) are recomputed on the frontend from per-issue data when rows are selected in the table. No additional API calls needed — each issue already carries `close_time_hours` and `status_times`.
+All metrics (average close time, median close time, total issues, average returns, distribution) are recomputed on the frontend from per-issue data when rows are selected in the table. No additional API calls needed — each issue already carries `close_time_hours`, `status_times`, and `return_count`.
 
 ## Common Troubleshooting
 
