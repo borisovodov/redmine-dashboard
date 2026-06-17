@@ -1,5 +1,5 @@
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import statistics
 import logging
 
@@ -11,6 +11,46 @@ class AnalyticsEngine:
     
     # Default closed status names (sensible defaults for most Redmine instances)
     DEFAULT_CLOSED_STATUSES = ['Closed', 'Done', 'Rejected', 'Resolved']
+    
+    @staticmethod
+    def _working_hours(start: datetime, end: datetime) -> float:
+        """
+        Calculate hours between two datetimes, excluding weekends (Saturday and Sunday).
+        
+        Iterates day by day, skipping Saturday (weekday 5) and Sunday (weekday 6).
+        For periods spanning many days, skips whole weekends at once.
+        """
+        if end <= start:
+            return 0.0
+        
+        total_seconds = 0.0
+        current = start
+        
+        while current < end:
+            weekday = current.weekday()
+            
+            if weekday >= 5:  # Saturday (5) or Sunday (6)
+                # Skip to next Monday at midnight
+                days_until_monday = 7 - weekday
+                next_monday = current.replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                ) + timedelta(days=days_until_monday)
+                if next_monday >= end:
+                    break
+                current = next_monday
+                continue
+            
+            # Current day is a working day (Mon-Fri).
+            # Move to the end of this working day (next midnight).
+            next_day = current.replace(
+                hour=0, minute=0, second=0, microsecond=0
+            ) + timedelta(days=1)
+            day_end = min(next_day, end)
+            
+            total_seconds += (day_end - current).total_seconds()
+            current = day_end
+        
+        return total_seconds / 3600
     
     @staticmethod
     def calculate_metrics(issues: List[Dict], closed_statuses: Optional[List[str]] = None,
@@ -78,8 +118,7 @@ class AnalyticsEngine:
                     
                     if closed_on:
                         closed_on = datetime.fromisoformat(closed_on.replace('Z', '+00:00'))
-                        diff = closed_on - created_on
-                        hours = diff.total_seconds() / 3600
+                        hours = AnalyticsEngine._working_hours(created_on, closed_on)
                         close_times_hours.append(hours)
                 except Exception as e:
                     logger.warning(f"Error calculating close time for issue {issue.get('id')}: {str(e)}")
@@ -175,7 +214,7 @@ class AnalyticsEngine:
                     status_name = AnalyticsEngine._resolve_status_name(
                         issue.get('status', {}), statuses_map
                     )
-                    hours = (end_time - created_on).total_seconds() / 3600
+                    hours = AnalyticsEngine._working_hours(created_on, end_time)
                     status_times[status_name] = status_times.get(status_name, 0) + hours
                     continue
                 
@@ -222,7 +261,7 @@ class AnalyticsEngine:
                                 continue
                             
                             # Record time spent in current_status
-                            time_in_status = (journal_time - status_start_time).total_seconds() / 3600
+                            time_in_status = AnalyticsEngine._working_hours(status_start_time, journal_time)
                             if time_in_status > 0:
                                 status_times[current_status] = \
                                     status_times.get(current_status, 0) + time_in_status
@@ -241,7 +280,7 @@ class AnalyticsEngine:
                         closed_on_str.replace('Z', '+00:00')
                     )
                 
-                time_in_status = (end_time - status_start_time).total_seconds() / 3600
+                time_in_status = AnalyticsEngine._working_hours(status_start_time, end_time)
                 if time_in_status > 0:
                     status_times[current_status] = \
                         status_times.get(current_status, 0) + time_in_status
@@ -298,7 +337,7 @@ class AnalyticsEngine:
                     status_name = AnalyticsEngine._resolve_status_name(
                         issue.get('status', {}), statuses_map
                     )
-                    hours = (end_time - created_on).total_seconds() / 3600
+                    hours = AnalyticsEngine._working_hours(created_on, end_time)
                     issue_times[status_name] = hours
                     result[issue_id] = issue_times
                     continue
@@ -339,7 +378,7 @@ class AnalyticsEngine:
                             new_id = detail.get('new_value')
                             if new_id is None:
                                 continue
-                            time_in_status = (journal_time - status_start_time).total_seconds() / 3600
+                            time_in_status = AnalyticsEngine._working_hours(status_start_time, journal_time)
                             if time_in_status > 0:
                                 issue_times[current_status] = \
                                     issue_times.get(current_status, 0) + time_in_status
@@ -354,7 +393,7 @@ class AnalyticsEngine:
                     end_time = datetime.fromisoformat(
                         closed_on_str.replace('Z', '+00:00')
                     )
-                time_in_status = (end_time - status_start_time).total_seconds() / 3600
+                time_in_status = AnalyticsEngine._working_hours(status_start_time, end_time)
                 if time_in_status > 0:
                     issue_times[current_status] = \
                         issue_times.get(current_status, 0) + time_in_status
@@ -506,7 +545,7 @@ class AnalyticsEngine:
                     try:
                         created_on = datetime.fromisoformat(created_on_str.replace('Z', '+00:00'))
                         closed_on = datetime.fromisoformat(closed_on_str.replace('Z', '+00:00'))
-                        close_time_hours = round((closed_on - created_on).total_seconds() / 3600, 2)
+                        close_time_hours = round(AnalyticsEngine._working_hours(created_on, closed_on), 2)
                     except Exception:
                         pass
             
